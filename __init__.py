@@ -2,32 +2,20 @@
 ComfyUI-WepeNerd  —  Custom node pack by WepeNerd
 ===================================================
 https://github.com/WepeNerd/ComfyUI-WepeNerd
-
-Install:
-  1. Clone into ComfyUI/custom_nodes/
-  2. Restart ComfyUI
-  3. Nodes appear under the "WepeNerd" category
 """
 
 import math
+import os
+
+WEB_DIRECTORY = os.path.join(os.path.dirname(__file__), "web", "js")
 
 
 # ================================================================== #
-#  Resolution Suggest
+#  Resolution Suggest  (text-based, original node)
 # ================================================================== #
 
 class WN_ResolutionSuggest:
-    """
-    Takes a source width/height and a target dimension, then outputs
-    proportionally resized width/height snapped to a chosen divisor.
-
-    Modes:
-      - Longest Side:  scales so the longest side matches the target.
-      - Shortest Side: scales so the shortest side matches the target.
-      - Width:         scales so width matches the target.
-      - Height:        scales so height matches the target.
-      - Scale Factor:  multiplies both dimensions by target / 100  (e.g. 50 = half).
-    """
+    """Proportionally resize width/height, snapped to a divisor grid."""
 
     SNAP_MODES = ["round", "floor", "ceil"]
     RESIZE_MODES = ["Longest Side", "Shortest Side", "Width", "Height", "Scale Factor"]
@@ -52,7 +40,6 @@ class WN_ResolutionSuggest:
     RETURN_NAMES  = ("width", "height", "original_width", "original_height", "scale_factor", "aspect_ratio", "info")
     FUNCTION      = "suggest"
     CATEGORY      = "WepeNerd/Resolution"
-    OUTPUT_NODE   = False
 
     @staticmethod
     def _snap(value, divisor, mode):
@@ -66,7 +53,6 @@ class WN_ResolutionSuggest:
 
     @staticmethod
     def _ratio(w, h):
-        """Return the aspect ratio as a simplified string like '16:9'."""
         g = math.gcd(w, h)
         return f"{w // g}:{h // g}"
 
@@ -75,38 +61,25 @@ class WN_ResolutionSuggest:
 
         if resize_mode == "Longest Side":
             if width >= height:
-                new_w = float(target)
-                new_h = new_w / aspect
+                new_w, new_h = float(target), float(target) / aspect
             else:
-                new_h = float(target)
-                new_w = new_h * aspect
-
+                new_h, new_w = float(target), float(target) * aspect
         elif resize_mode == "Shortest Side":
             if width <= height:
-                new_w = float(target)
-                new_h = new_w / aspect
+                new_w, new_h = float(target), float(target) / aspect
             else:
-                new_h = float(target)
-                new_w = new_h * aspect
-
+                new_h, new_w = float(target), float(target) * aspect
         elif resize_mode == "Width":
-            new_w = float(target)
-            new_h = new_w / aspect
-
+            new_w, new_h = float(target), float(target) / aspect
         elif resize_mode == "Height":
-            new_h = float(target)
-            new_w = new_h * aspect
-
-        else:  # Scale Factor (target treated as percentage)
+            new_h, new_w = float(target), float(target) * aspect
+        else:
             scale = target / 100.0
-            new_w = width * scale
-            new_h = height * scale
+            new_w, new_h = width * scale, height * scale
 
         out_w = self._snap(new_w, divisor, snap_mode)
         out_h = self._snap(new_h, divisor, snap_mode)
-
         scale_factor = round(out_w / width, 6)
-
         src_ratio = self._ratio(width, height)
         out_ratio = self._ratio(out_w, out_h)
 
@@ -116,20 +89,67 @@ class WN_ResolutionSuggest:
             f"Divisor: {divisor}  |  Snap: {snap_mode}\n"
             f"Scale: {scale_factor:.4f}x"
         )
-
         return (out_w, out_h, width, height, scale_factor, out_ratio, info)
 
 
 # ================================================================== #
-#  Registration  —  add new nodes here
+#  Drag Resolution  (visual interactive node)
+# ================================================================== #
+
+class WN_DragResolution:
+    """
+    Interactive visual resolution picker.
+    Drag a box to set dimensions — snaps to aspect ratio and divisor grid.
+    """
+
+    ASPECT_RATIOS = ["Free", "1:1", "16:9", "9:16", "4:3", "3:4",
+                     "3:2", "2:3", "21:9", "9:21", "5:4", "4:5"]
+    DIVISOR_OPTIONS = [32, 16, 8, 64]
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "width":        ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 8}),
+                "height":       ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 8}),
+                "aspect_ratio": (cls.ASPECT_RATIOS, {"default": "Free"}),
+                "divisor":      (cls.DIVISOR_OPTIONS, {"default": 32}),
+            },
+        }
+
+    RETURN_TYPES  = ("INT", "INT", "STRING", "STRING")
+    RETURN_NAMES  = ("width", "height", "aspect_ratio", "info")
+    FUNCTION      = "resolve"
+    CATEGORY      = "WepeNerd/Resolution"
+    OUTPUT_NODE   = False
+
+    def resolve(self, width, height, aspect_ratio, divisor):
+        # Snap to divisor
+        w = max(divisor, round(width / divisor) * divisor)
+        h = max(divisor, round(height / divisor) * divisor)
+
+        g = math.gcd(w, h)
+        ratio_str = f"{w // g}:{h // g}"
+
+        info = (
+            f"{w}\u00d7{h} ({ratio_str})\n"
+            f"Divisor: {divisor}"
+        )
+        return (w, h, ratio_str, info)
+
+
+# ================================================================== #
+#  Registration
 # ================================================================== #
 
 NODE_CLASS_MAPPINGS = {
     "WN_ResolutionSuggest": WN_ResolutionSuggest,
+    "WN_DragResolution":    WN_DragResolution,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "WN_ResolutionSuggest": "Resolution Suggest (WepeNerd)",
+    "WN_DragResolution":    "Drag Resolution (WepeNerd)",
 }
 
-__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]

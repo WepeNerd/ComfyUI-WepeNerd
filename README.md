@@ -14,30 +14,59 @@ git clone https://github.com/WepeNerd/ComfyUI-WepeNerd.git
 ```
 Restart ComfyUI. Nodes appear under the **WepeNerd** category.
 
+---
+
 ## Nodes
+
+### Drag Resolution ✨ (NEW)
+
+An interactive visual resolution picker. Drag a box to set your output dimensions — the box snaps to your chosen aspect ratio and divisor grid in real time.
+
+**Features:**
+- Drag corners, edges, or the whole box to set width/height
+- Aspect ratio locking (16:9, 4:3, 1:1, 9:16, and more — or Free)
+- Real-time dimension readout with ratio label on the box
+- Divisor snapping (32, 16, 8, 64) — every output is always cleanly divisible
+- Grid overlay shows divisor increments
+
+| Input | Description |
+|---|---|
+| `width` / `height` | Resolution (also set by dragging the box) |
+| `aspect_ratio` | Lock to a ratio or set Free for unconstrained |
+| `divisor` | Snap grid: 32 (default), 16, 8, or 64 |
+
+| Output | Type | Description |
+|---|---|---|
+| `width` | INT | Final width (divisible by divisor) |
+| `height` | INT | Final height (divisible by divisor) |
+| `aspect_ratio` | STRING | Simplified ratio string (e.g. "16:9") |
+| `info` | STRING | Human-readable summary |
+
+---
 
 ### Resolution Suggest
 
-Proportionally resizes a width/height while snapping to a divisor grid (32, 16, 8, or 64) — useful for preparing dimensions for latent images.
+Takes a source width/height and proportionally resizes to a target, snapped to a divisor grid. Useful for preparing dimensions for models that need specific multiples.
 
 | Input | Description |
 |---|---|
 | `width` / `height` | Source resolution |
-| `target` | Target size in pixels, or percentage when using Scale Factor mode |
-| `resize_mode` | What the target controls: **Longest Side**, **Shortest Side**, **Width**, **Height**, or **Scale Factor** |
-| `divisor` | Snap grid: 32 (default), 16, 8, or 64 |
-| `snap_mode` | **round** (nearest), **floor** (down), or **ceil** (up) |
+| `target` | Target size in pixels, or percentage for Scale Factor mode |
+| `resize_mode` | Longest Side, Shortest Side, Width, Height, or Scale Factor |
+| `divisor` | Snap grid: 32, 16, 8, or 64 |
+| `snap_mode` | round, floor, or ceil |
 
 | Output | Type | Description |
 |---|---|---|
-| `width` | INT | Resized width (divisible by divisor) |
-| `height` | INT | Resized height (divisible by divisor) |
+| `width` | INT | Resized width |
+| `height` | INT | Resized height |
 | `original_width` | INT | Pass-through of input width |
 | `original_height` | INT | Pass-through of input height |
 | `scale_factor` | FLOAT | Actual scale applied |
+| `aspect_ratio` | STRING | Simplified ratio string |
 | `info` | STRING | Human-readable summary |
 
-**Example:** 1920×1080 with target 1024 (Longest Side, div 32) → **1024×576**
+---
 
 ## License
 
