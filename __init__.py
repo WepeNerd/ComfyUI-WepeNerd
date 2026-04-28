@@ -48,8 +48,8 @@ class WN_ResolutionSuggest:
             },
         }
 
-    RETURN_TYPES  = ("INT", "INT", "INT", "INT", "FLOAT", "STRING")
-    RETURN_NAMES  = ("width", "height", "original_width", "original_height", "scale_factor", "info")
+    RETURN_TYPES  = ("INT", "INT", "INT", "INT", "FLOAT", "STRING", "STRING")
+    RETURN_NAMES  = ("width", "height", "original_width", "original_height", "scale_factor", "aspect_ratio", "info")
     FUNCTION      = "suggest"
     CATEGORY      = "WepeNerd/Resolution"
     OUTPUT_NODE   = False
@@ -63,6 +63,12 @@ class WN_ResolutionSuggest:
         else:
             result = round(value / divisor) * divisor
         return max(divisor, int(result))
+
+    @staticmethod
+    def _ratio(w, h):
+        """Return the aspect ratio as a simplified string like '16:9'."""
+        g = math.gcd(w, h)
+        return f"{w // g}:{h // g}"
 
     def suggest(self, width, height, target, resize_mode, divisor, snap_mode):
         aspect = width / height
@@ -101,14 +107,17 @@ class WN_ResolutionSuggest:
 
         scale_factor = round(out_w / width, 6)
 
+        src_ratio = self._ratio(width, height)
+        out_ratio = self._ratio(out_w, out_h)
+
         info = (
-            f"{width}\u00d7{height}  \u2192  {out_w}\u00d7{out_h}\n"
+            f"{width}\u00d7{height} ({src_ratio})  \u2192  {out_w}\u00d7{out_h} ({out_ratio})\n"
             f"Aspect: {aspect:.4f}  |  Mode: {resize_mode}\n"
             f"Divisor: {divisor}  |  Snap: {snap_mode}\n"
             f"Scale: {scale_factor:.4f}x"
         )
 
-        return (out_w, out_h, width, height, scale_factor, info)
+        return (out_w, out_h, width, height, scale_factor, out_ratio, info)
 
 
 # ================================================================== #
