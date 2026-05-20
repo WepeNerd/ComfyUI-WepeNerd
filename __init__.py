@@ -5,9 +5,8 @@ https://github.com/WepeNerd/ComfyUI-WepeNerd
 """
 
 import math
-import os
 
-WEB_DIRECTORY = os.path.join(os.path.dirname(__file__), "web", "js")
+WEB_DIRECTORY = "./js"
 
 
 # ================================================================== #
@@ -99,7 +98,7 @@ class WN_ResolutionSuggest:
 class WN_DragResolution:
     """
     Interactive visual resolution picker.
-    Drag a box to set dimensions — snaps to aspect ratio and divisor grid.
+    Drag a box to set dimensions snapped to the divisor grid.
     """
 
     ASPECT_RATIOS = ["Free", "1:1", "16:9", "9:16", "4:3", "3:4",
@@ -110,8 +109,8 @@ class WN_DragResolution:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "width":        ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 8}),
-                "height":       ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 8}),
+                "width":        ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 32}),
+                "height":       ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 32}),
                 "aspect_ratio": (cls.ASPECT_RATIOS, {"default": "Free"}),
                 "divisor":      (cls.DIVISOR_OPTIONS, {"default": 32}),
             },

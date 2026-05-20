@@ -12,27 +12,29 @@ Search for **WepeNerd** in ComfyUI Manager and click Install.
 cd ComfyUI/custom_nodes
 git clone https://github.com/WepeNerd/ComfyUI-WepeNerd.git
 ```
-Restart ComfyUI. Nodes appear under the **WepeNerd** category.
+Restart ComfyUI. Nodes appear under the **WepeNerd/Resolution** category.
 
 ---
 
 ## Nodes
 
-### Drag Resolution ✨ (NEW)
+### Drag Resolution
 
-An interactive visual resolution picker. Drag a box to set your output dimensions — the box snaps to your chosen aspect ratio and divisor grid in real time.
+An interactive visual resolution picker. Drag a box to set your output dimensions. Values snap to the chosen divisor grid in real time.
 
 **Features:**
-- Drag corners, edges, or the whole box to set width/height
-- Aspect ratio locking (16:9, 4:3, 1:1, 9:16, and more — or Free)
+- Drag side handles to change one axis at a time, updating the aspect ratio as the pixel size changes
+- Drag corner handles to scale the resolution while preserving the current aspect ratio
+- Choose an aspect ratio preset (16:9, 4:3, 1:1, 9:16, and more) to reshape the box before dragging
+- Use the width/height input arrows to step by the current divisor value
 - Real-time dimension readout with ratio label on the box
-- Divisor snapping (32, 16, 8, 64) — every output is always cleanly divisible
+- Divisor snapping (32, 16, 8, 64) keeps every output cleanly divisible
 - Grid overlay shows divisor increments
 
 | Input | Description |
 |---|---|
-| `width` / `height` | Resolution (also set by dragging the box) |
-| `aspect_ratio` | Lock to a ratio or set Free for unconstrained |
+| `width` / `height` | Resolution (also set by dragging the box); arrow buttons step by the selected divisor |
+| `aspect_ratio` | Preset ratio to apply, or Free for the current/custom ratio |
 | `divisor` | Snap grid: 32 (default), 16, 8, or 64 |
 
 | Output | Type | Description |
@@ -41,6 +43,14 @@ An interactive visual resolution picker. Drag a box to set your output dimension
 | `height` | INT | Final height (divisible by divisor) |
 | `aspect_ratio` | STRING | Simplified ratio string (e.g. "16:9") |
 | `info` | STRING | Human-readable summary |
+
+---
+
+## Workflow Compatibility
+
+Node IDs, widget names, output names, and the `WepeNerd/Resolution` category are unchanged. Existing workflows should continue to load. The frontend extension now lives in `./js/`, matching the exported `WEB_DIRECTORY`.
+
+After updating, restart ComfyUI, hard refresh the browser, create a Drag Resolution node, drag side and corner handles, and check the browser dev console for JavaScript errors.
 
 ---
 
