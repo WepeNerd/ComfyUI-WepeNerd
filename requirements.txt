@@ -1,0 +1,6 @@
+Pillow
+numpy
+trimesh
+pyrender
+PyOpenGL
+pyglet
