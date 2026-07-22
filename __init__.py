@@ -7,6 +7,9 @@ https://github.com/WepeNerd/ComfyUI-WepeNerd
 import math
 import os
 
+from .liquify_node import WN_LiquifyImage
+from .video_frame_count_node import WN_VideoExactFramesFPS
+
 WEB_DIRECTORY = "./js"
 _WN_OBJ_MESH_CACHE = {}
 _WN_OBJ_MESH_CACHE_LIMIT = 8
@@ -741,6 +744,8 @@ NODE_CLASS_MAPPINGS = {
     "WN_DragResolution":    WN_DragResolution,
     "WN_LoadOBJ": WN_LoadOBJ,
     "WN_3DProductPlacement": WN_3DProductPlacement,
+    "WN_LiquifyImage": WN_LiquifyImage,
+    "WN_VideoExactFramesFPS": WN_VideoExactFramesFPS,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -748,6 +753,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "WN_DragResolution":    "Drag Resolution (WepeNerd)",
     "WN_LoadOBJ": "Load OBJ (WepeNerd)",
     "WN_3DProductPlacement": "3D Product Placement (WepeNerd)",
+    "WN_LiquifyImage": "Liquify Image (WepeNerd)",
+    "WN_VideoExactFramesFPS": "Exact Video Frames/FPS (WepeNerd)",
 }
 
 _register_3d_routes()
