@@ -19,11 +19,101 @@ cd ComfyUI-WepeNerd
 pip install -r requirements.txt
 ```
 
-Restart ComfyUI. Nodes appear under the **WepeNerd/Resolution**, **WepeNerd/3D**, **WepeNerd/Image**, and **WepeNerd/Video** categories.
+Restart ComfyUI. Nodes appear under the **WepeNerd/Resolution**, **WepeNerd/3D**, **WepeNerd/Image**, **WepeNerd/Video**, and **WepeNerd/Local AI** categories.
 
 ---
 
 ## Nodes
+
+### Local AI
+
+**Category:** `WepeNerd/Local AI`
+
+The normal workflow has four simple nodes:
+
+```text
+Local AI Model
+    model: Muse / Qwen GGUF
+        |
+        +--> Prompt Enhancer
+        |      skill: H3 or Krea 2
+        |
+        +--> Image Captioner
+        |
+        +--> Video Captioner
+```
+
+`Local AI Model` uses safe defaults, finds `llama-server` automatically, and releases its external CUDA allocation after each generation. `Prompt Enhancer` includes researched, local H3 and Krea 2 skills. Image batches produce one caption per image. Video captioning automatically uses native video only when the backend explicitly reports support; otherwise it samples chronological frames with memory-safe seeking.
+
+Put model files here (subfolders are supported):
+
+```text
+ComfyUI/models/LLM/
+```
+
+For example, the model and projector in this setup are:
+
+```text
+Huihui-Qwen3.8-27B-abliterated-Q4_K.gguf
+mmproj-model-bf16.gguf
+```
+
+The nodes do not download or bundle llama.cpp. Install a recent `llama-server` build separately, then use one of these options:
+
+- put `llama-server.exe` on `PATH`;
+- set the `LLAMA_SERVER_PATH` environment variable;
+- extract the Windows build and CUDA runtime DLLs together under `C:\llamacpp\`;
+- copy the executable and its required DLLs to `ComfyUI-WepeNerd/bin/`; or
+- enter the full executable path in `Local AI Model (Advanced)`.
+
+Select `LLM/Huihui-Qwen3.8-27B-abliterated-Q4_K.gguf` as the model. The defaults request 24 GB of free VRAM, offload all model layers supported by the backend (`gpu_layers = -1`), use an 8192-token context, and release the server after generation.
+
+For image or video captioning, also select `LLM/mmproj-model-bf16.gguf`. Projectors are architecture/model-specific; discovery does not imply compatibility. Images are resized without upscaling and encoded as JPEG at quality 90. An image batch is processed through one server acquisition and returns one caption per image.
+
+Available nodes:
+
+| Node | Purpose |
+|---|---|
+| `Local AI Model` | Select a model and optional projector with safe defaults |
+| `Prompt Enhancer` | Rewrite a prompt using the bundled H3, Krea 2, or a custom skill |
+| `Image Captioner` | Caption every image in a ComfyUI `IMAGE` batch |
+| `Video Captioner` | Automatically caption native video or sampled chronological frames |
+
+Prompt enhancement and caption nodes set `reasoning_effort` to `none`. Returned `<think>...</think>` blocks are removed, and hidden `reasoning_content` is never returned as a prompt or caption.
+
+Video auto mode checks llama-server `/props`: it uses typed native `input_video` only when video support is explicit, otherwise it sends timestamped JPEG frames. Missing metadata is treated as unknown and falls back conservatively. File-backed clips use PyAV seek sampling, so memory scales with selected frames rather than total clip length. Audio and dialogue are not inferred.
+
+#### Local AI / Advanced
+
+**Category:** `WepeNerd/Local AI/Advanced`
+
+Use the advanced nodes for raw generation, a custom context size, GPU layers, KV cache overrides, Flash Attention overrides, keep-alive, a custom server executable, secondary-GPU selection, native/sampled video controls, status, or manual unloading.
+
+| Node | Purpose |
+|---|---|
+| `Local AI Model (Advanced)` | Full model, server, memory, and lifecycle configuration |
+| `Local AI Generate` | General text generation with optional image input |
+| `Prompt Enhancer (Advanced)` | Legacy styles and sampler controls, including H3 and Krea 2 |
+| `Image Captioner (Advanced)` | Caption cleanup, encoding, and sampler controls |
+| `Video Captioner (Advanced)` | Native/sampled modes and sampling controls |
+| `Local AI Status` | Report the managed server and advertised modalities |
+| `Unload Local AI Model` | Stop a resident keep-alive server |
+
+`release_after_generate = false` is an advanced speed option for consecutive calls. `keep_alive_seconds` can release an idle server automatically; zero means manual indefinite keep-alive. While resident, external llama.cpp VRAM is invisible to ComfyUI, so run `Unload Local AI Model` before returning to a heavy diffusion or video branch and create an actual STRING dependency edge when sequencing matters.
+
+Advanced config includes Flash Attention, F16/Q8 KV caches, vision-token bounds, and child-only `CUDA_VISIBLE_DEVICES`. For a dedicated secondary GPU, set `cuda_visible_devices` and choose `comfy_vram_handoff = never`; this does not modify ComfyUI's own environment. Q8 KV caches save memory but can change speed or quality slightly.
+
+The backend expects a current llama.cpp build with `--jinja`, `/health`, streaming chat completions, `reasoning_effort`, and multimodal `image_url` support. `/props` enriches identity/capability checks but incomplete metadata is tolerated. Native video additionally requires typed `input_video`; auto mode uses it only when `/props` explicitly advertises video support.
+
+Troubleshooting:
+
+- **llama-server was not found:** set the executable path as described above. A `.gguf` file cannot run by itself.
+- **Startup timeout or early exit:** inspect the ComfyUI console; the error includes the bounded tail of llama-server output.
+- **CUDA out of memory:** enable `aggressive_vram_handoff`, reduce context size, or reduce GPU layers.
+- **Image request rejected:** confirm the model is vision-capable, the projector belongs to the exact model, and the llama.cpp build is recent enough.
+- **Native video unavailable:** use `sampled_frames`; native support depends on both the model/projector and the llama.cpp build.
+
+---
 
 ### Exact Video Frames/FPS (WepeNerd)
 
@@ -204,6 +294,25 @@ Takes a source width/height and proportionally resizes to a target, snapped to a
 | `scale_factor` | FLOAT | Actual scale applied |
 | `aspect_ratio` | STRING | Simplified ratio string |
 | `info` | STRING | Human-readable summary |
+
+---
+
+## Changelog
+
+### 2026-08-20 — Local AI simplified workflow
+
+- Add the clean `Local AI Model`, `Prompt Enhancer`, `Image Captioner`, and `Video Captioner` workflow while preserving every existing GGUF node ID and socket type.
+- Bundle local MiniMax H3 and Krea 2 prompt skills with safe, cached loading.
+- Make video auto mode capability-aware and lazy, with PyAV seek sampling for long file-backed clips.
+- Treat incomplete `/props` metadata as unknown, preserve healthy keep-alive servers on cancellation, and omit optional llama.cpp flags at their defaults.
+
+### 2026-08-20 — GGUF LLM/VLM hardening
+
+- Prevent hidden reasoning from becoming prompt or caption output.
+- Add streaming cancellation, verified server identity, safer process cleanup, and optional timed keep-alive.
+- Add full image-batch captioning, prompt/caption presets, optimized media encoding, modern samplers, and secondary-GPU controls.
+- Add `GGUF Caption Video` with native-video capability detection and timestamped sampled-frame fallback.
+- Register `models/LLM` through Comfy folder paths with extra-path support and cached discovery.
 
 ---
 

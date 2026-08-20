@@ -9,6 +9,10 @@ import os
 
 from .liquify_node import WN_LiquifyImage
 from .video_frame_count_node import WN_VideoExactFramesFPS
+from .wn_gguf_nodes import (
+    NODE_CLASS_MAPPINGS as GGUF_NODE_CLASS_MAPPINGS,
+    NODE_DISPLAY_NAME_MAPPINGS as GGUF_NODE_DISPLAY_NAME_MAPPINGS,
+)
 
 WEB_DIRECTORY = "./js"
 _WN_OBJ_MESH_CACHE = {}
@@ -756,6 +760,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "WN_LiquifyImage": "Liquify Image (WepeNerd)",
     "WN_VideoExactFramesFPS": "Exact Video Frames/FPS (WepeNerd)",
 }
+
+NODE_CLASS_MAPPINGS.update(GGUF_NODE_CLASS_MAPPINGS)
+NODE_DISPLAY_NAME_MAPPINGS.update(GGUF_NODE_DISPLAY_NAME_MAPPINGS)
 
 _register_3d_routes()
 
