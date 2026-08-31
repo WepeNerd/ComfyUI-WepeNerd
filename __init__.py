@@ -7,6 +7,7 @@ https://github.com/WepeNerd/ComfyUI-WepeNerd
 import math
 import os
 
+from .drag_resolution import WN_DragResolution
 from .liquify_node import WN_LiquifyImage
 from .video_frame_count_node import WN_VideoExactFramesFPS
 from .wn_gguf_nodes import (
@@ -487,52 +488,6 @@ class WN_ResolutionSuggest:
             f"Scale: {scale_factor:.4f}x"
         )
         return (out_w, out_h, width, height, scale_factor, out_ratio, info)
-
-
-# ================================================================== #
-#  Drag Resolution  (visual interactive node)
-# ================================================================== #
-
-class WN_DragResolution:
-    """
-    Interactive visual resolution picker.
-    Drag a box to set dimensions snapped to the divisor grid.
-    """
-
-    ASPECT_RATIOS = ["Free", "1:1", "16:9", "9:16", "4:3", "3:4",
-                     "3:2", "2:3", "21:9", "9:21", "5:4", "4:5"]
-    DIVISOR_OPTIONS = [32, 16, 8, 64]
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "width":        ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 32}),
-                "height":       ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 32}),
-                "aspect_ratio": (cls.ASPECT_RATIOS, {"default": "Free"}),
-                "divisor":      (cls.DIVISOR_OPTIONS, {"default": 32}),
-            },
-        }
-
-    RETURN_TYPES  = ("INT", "INT", "STRING", "STRING")
-    RETURN_NAMES  = ("width", "height", "aspect_ratio", "info")
-    FUNCTION      = "resolve"
-    CATEGORY      = "WepeNerd/Resolution"
-    OUTPUT_NODE   = False
-
-    def resolve(self, width, height, aspect_ratio, divisor):
-        # Snap to divisor
-        w = max(divisor, round(width / divisor) * divisor)
-        h = max(divisor, round(height / divisor) * divisor)
-
-        g = math.gcd(w, h)
-        ratio_str = f"{w // g}:{h // g}"
-
-        info = (
-            f"{w}\u00d7{h} ({ratio_str})\n"
-            f"Divisor: {divisor}"
-        )
-        return (w, h, ratio_str, info)
 
 
 # ================================================================== #

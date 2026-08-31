@@ -19,7 +19,9 @@ const COL_TEXT = "rgba(255,255,255,0.90)";
 const COL_SUB = "rgba(255,255,255,0.55)";
 
 function snapVal(v, div) {
-    return Math.max(div, Math.round(v / div) * div);
+    const min = Math.max(div, Math.ceil(MIN_PX / div) * div);
+    const max = Math.max(min, Math.floor(MAX_PX / div) * div);
+    return clampVal(Math.round(v / div) * div, min, max);
 }
 
 function clampVal(v, lo, hi) {
@@ -54,6 +56,64 @@ function parseRatio(str) {
     return isNaN(a) || isNaN(b) || b === 0 ? null : a / b;
 }
 
+function resolutionMP(w, h) {
+    return (w * h) / 1_000_000;
+}
+
+function findBestResolution(targetMP, targetRatio, divisor) {
+    const div = clampVal(Math.round(Number(divisor) || 32), 1, MAX_PX);
+    const min = Math.max(div, Math.ceil(MIN_PX / div) * div);
+    const max = Math.max(min, Math.floor(MAX_PX / div) * div);
+    const maxMP = resolutionMP(max, max);
+    const mpValue = Number(targetMP);
+    const ratioValue = Number(targetRatio);
+    const mp = clampVal(
+        Number.isFinite(mpValue) && mpValue > 0 ? mpValue : resolutionMP(min, min),
+        Number.EPSILON,
+        maxMP
+    );
+    const ratio = Number.isFinite(ratioValue) && ratioValue > 0 ? ratioValue : 1;
+    const targetPixels = mp * 1_000_000;
+    const idealW = Math.sqrt(targetPixels * ratio);
+    const idealH = Math.sqrt(targetPixels / ratio);
+
+    const candidateAxis = (ideal) => {
+        const center = clampVal(Math.round(ideal / div) * div, min, max);
+        const values = new Set([min, max]);
+        for (let offset = -8; offset <= 8; offset++) {
+            values.add(clampVal(center + offset * div, min, max));
+        }
+        return [...values].sort((a, b) => a - b);
+    };
+
+    let best = null;
+    let bestKey = null;
+    for (const width of candidateAxis(idealW)) {
+        for (const height of candidateAxis(idealH)) {
+            const areaError = Math.abs(width * height - targetPixels) / targetPixels;
+            const ratioError = Math.abs(Math.log((width / height) / ratio));
+            const sizeError = Math.pow((width - idealW) / idealW, 2)
+                + Math.pow((height - idealH) / idealH, 2);
+            const key = [
+                areaError + ratioError * 2 + sizeError * 0.1,
+                areaError,
+                ratioError,
+                sizeError,
+                width * height,
+                width,
+                height,
+            ];
+            if (!bestKey || key.some((value, i) =>
+                value < bestKey[i] && key.slice(0, i).every((v, j) => v === bestKey[j])
+            )) {
+                bestKey = key;
+                best = { width, height };
+            }
+        }
+    }
+    return best;
+}
+
 function isCornerDrag(mode) {
     return mode === "br" || mode === "tr" || mode === "bl" || mode === "tl";
 }
@@ -67,7 +127,15 @@ function getWidget(node, name) {
 }
 
 function getDivisor(node) {
-    return Number(getWidget(node, "divisor")?.value) || 32;
+    return clampVal(Math.round(Number(getWidget(node, "divisor")?.value) || 32), 1, MAX_PX);
+}
+
+function currentTargetRatio(node) {
+    const preset = parseRatio(getWidget(node, "aspect_ratio")?.value);
+    if (preset) return preset;
+    const width = Number(getWidget(node, "width")?.value) || 1;
+    const height = Number(getWidget(node, "height")?.value) || 1;
+    return width > 0 && height > 0 ? width / height : 1;
 }
 
 function setNumberStep(widget, step) {
@@ -109,10 +177,69 @@ function initState(node) {
         startMouse: null,
         startW: 0,
         startH: 0,
+        startRatio: 1,
         lastW: getWidget(node, "width")?.value ?? 1024,
         lastH: getWidget(node, "height")?.value ?? 1024,
+        syncing: false,
+        cleanupDragListeners: null,
     };
     return node._wnDragResolution;
+}
+
+function withSyncGuard(node, fn) {
+    const state = initState(node);
+    if (state.syncing) return;
+    state.syncing = true;
+    try {
+        fn();
+    } finally {
+        state.syncing = false;
+    }
+}
+
+function endDrag(node) {
+    const state = initState(node);
+    state.drag = null;
+    state.startMouse = null;
+    state.cleanupDragListeners?.();
+    state.cleanupDragListeners = null;
+}
+
+function installDragTermination(node) {
+    const state = initState(node);
+    state.cleanupDragListeners?.();
+    const finish = () => endDrag(node);
+    const targets = typeof window !== "undefined" ? [window] : [];
+    for (const target of targets) {
+        target.addEventListener("mouseup", finish, true);
+        target.addEventListener("pointerup", finish, true);
+        target.addEventListener("pointercancel", finish, true);
+        target.addEventListener("blur", finish, true);
+    }
+    state.cleanupDragListeners = () => {
+        for (const target of targets) {
+            target.removeEventListener("mouseup", finish, true);
+            target.removeEventListener("pointerup", finish, true);
+            target.removeEventListener("pointercancel", finish, true);
+            target.removeEventListener("blur", finish, true);
+        }
+    };
+}
+
+function setResolution(node, width, height, updateMP = true) {
+    const state = initState(node);
+    const widthWidget = getWidget(node, "width");
+    const heightWidget = getWidget(node, "height");
+    const mpWidget = getWidget(node, "target_mp");
+    if (!widthWidget || !heightWidget) return;
+    widthWidget.value = width;
+    heightWidget.value = height;
+    state.lastW = width;
+    state.lastH = height;
+    if (updateMP && mpWidget) {
+        mpWidget.value = Number(resolutionMP(width, height).toFixed(6));
+    }
+    node.setDirtyCanvas(true, true);
 }
 
 function canvasTop(node) {
@@ -166,38 +293,12 @@ function hitTest(node, localX, localY) {
         if (dist(localX, localY, hx, hy) < HIT_R) return key;
     }
 
-    if (localX >= bx && localX <= bx + bw && localY >= by && localY <= by + bh) {
-        return "move";
-    }
-
     return null;
 }
 
-function cornerResize(startW, startH, desiredW, desiredH, dx, dy, div) {
-    const unitW = Math.max(1, Math.round(startW / div));
-    const unitH = Math.max(1, Math.round(startH / div));
-    const unitGcd = gcd(unitW, unitH);
-    const ratioUnitW = Math.max(1, unitW / unitGcd);
-    const ratioUnitH = Math.max(1, unitH / unitGcd);
-    const baseW = ratioUnitW * div;
-    const baseH = ratioUnitH * div;
-    const useWidth = Math.abs(dx) >= Math.abs(dy);
-    const rawSteps = useWidth ? desiredW / baseW : desiredH / baseH;
-    const minSteps = Math.max(
-        1,
-        Math.ceil(MIN_PX / baseW),
-        Math.ceil(MIN_PX / baseH)
-    );
-    const maxSteps = Math.max(
-        minSteps,
-        Math.floor(Math.min(MAX_PX / baseW, MAX_PX / baseH))
-    );
-    const steps = clampVal(Math.round(rawSteps), minSteps, maxSteps);
-
-    return {
-        width: baseW * steps,
-        height: baseH * steps,
-    };
+function cornerResize(desiredW, desiredH, targetRatio, div) {
+    const desiredPixels = Math.max(1, desiredW * desiredH);
+    return findBestResolution(desiredPixels / 1_000_000, targetRatio, div);
 }
 
 function normalizeArrowStep(node, widget, previous) {
@@ -225,13 +326,21 @@ function installWidgetCallbacks(node) {
     const wH = getWidget(node, "height");
     const wAR = getWidget(node, "aspect_ratio");
     const wDV = getWidget(node, "divisor");
+    const wMP = getWidget(node, "target_mp");
+    if (wMP) wMP.label = "Target MP";
 
     if (wW) {
         const orig = wW.callback;
         wW.callback = function (value) {
             orig?.call(this, value);
-            state.lastW = normalizeArrowStep(node, wW, state.lastW);
-            node.setDirtyCanvas(true, true);
+            withSyncGuard(node, () => {
+                const width = normalizeArrowStep(node, wW, state.lastW);
+                const div = getDivisor(node);
+                const ratio = parseRatio(wAR?.value);
+                let height = Number(wH?.value) || div;
+                if (ratio && wH) height = snapVal(width / ratio, div);
+                setResolution(node, width, height, true);
+            });
         };
     }
 
@@ -239,8 +348,14 @@ function installWidgetCallbacks(node) {
         const orig = wH.callback;
         wH.callback = function (value) {
             orig?.call(this, value);
-            state.lastH = normalizeArrowStep(node, wH, state.lastH);
-            node.setDirtyCanvas(true, true);
+            withSyncGuard(node, () => {
+                const height = normalizeArrowStep(node, wH, state.lastH);
+                const div = getDivisor(node);
+                const ratio = parseRatio(wAR?.value);
+                let width = Number(wW?.value) || div;
+                if (ratio && wW) width = snapVal(height * ratio, div);
+                setResolution(node, width, height, true);
+            });
         };
     }
 
@@ -248,8 +363,13 @@ function installWidgetCallbacks(node) {
         const orig = wDV.callback;
         wDV.callback = function (value) {
             orig?.call(this, value);
-            syncResolutionSteps(node);
-            node.setDirtyCanvas(true, true);
+            withSyncGuard(node, () => {
+                syncResolutionSteps(node);
+                if (!wW || !wH) return;
+                const mp = resolutionMP(Number(wW.value) || 1, Number(wH.value) || 1);
+                const result = findBestResolution(mp, currentTargetRatio(node), getDivisor(node));
+                setResolution(node, result.width, result.height, true);
+            });
         };
     }
 
@@ -257,15 +377,29 @@ function installWidgetCallbacks(node) {
         const orig = wAR.callback;
         wAR.callback = function (value) {
             orig?.call(this, value);
+            withSyncGuard(node, () => {
+                const ratio = parseRatio(value);
+                if (!ratio || !wW || !wH) {
+                    node.setDirtyCanvas(true, true);
+                    return;
+                }
+                const mp = resolutionMP(Number(wW.value) || 1, Number(wH.value) || 1);
+                const result = findBestResolution(mp, ratio, getDivisor(node));
+                setResolution(node, result.width, result.height, true);
+            });
+        };
+    }
 
-            const ratio = parseRatio(value);
-            const div = getDivisor(node);
-            if (ratio && wW && wH) {
-                wH.value = clampVal(snapVal(wW.value / ratio, div), div, MAX_PX);
-                state.lastW = wW.value;
-                state.lastH = wH.value;
-                node.setDirtyCanvas(true, true);
-            }
+    if (wMP) {
+        const orig = wMP.callback;
+        wMP.callback = function (value) {
+            orig?.call(this, value);
+            withSyncGuard(node, () => {
+                const mp = clampVal(Number(value) || 0.01, 0.01, 67.0);
+                wMP.value = mp;
+                const result = findBestResolution(mp, currentTargetRatio(node), getDivisor(node));
+                setResolution(node, result.width, result.height, false);
+            });
         };
     }
 
@@ -346,11 +480,23 @@ function drawResolutionPicker(node, ctx) {
     ctx.textBaseline = "middle";
     ctx.fillStyle = COL_TEXT;
     ctx.font = "bold 13px sans-serif";
-    ctx.fillText(`${pixW} x ${pixH}`, cx, cy - 8);
+    const showMP = bw >= 70 && bh >= 52;
+    const showRatio = bw >= 100 && bh >= 76;
+    ctx.fillText(`${pixW} × ${pixH}`, cx, cy - (showRatio ? 16 : showMP ? 9 : 0));
 
     ctx.fillStyle = COL_SUB;
     ctx.font = "11px sans-serif";
-    ctx.fillText(ratioStr(pixW, pixH), cx, cy + 9);
+    if (showMP) {
+        ctx.fillText(`${resolutionMP(pixW, pixH).toFixed(3)} MP`, cx, cy + (showRatio ? 0 : 9));
+    }
+    const preset = getWidget(node, "aspect_ratio")?.value || "Free";
+    const actual = ratioStr(pixW, pixH);
+    const ratioLabel = preset === "Free"
+        ? `Free · ${actual}`
+        : (Math.abs((pixW / pixH) / parseRatio(preset) - 1) < 0.001
+            ? `target ${preset}`
+            : `${preset} → ${actual}`);
+    if (showRatio) ctx.fillText(ratioLabel, cx, cy + 16);
 }
 
 app.registerExtension({
@@ -364,6 +510,12 @@ app.registerExtension({
             origOnNodeCreated?.apply(this, arguments);
             initState(this);
             installWidgetCallbacks(this);
+            const width = Number(getWidget(this, "width")?.value) || 1024;
+            const height = Number(getWidget(this, "height")?.value) || 1024;
+            const mpWidget = getWidget(this, "target_mp");
+            if (mpWidget) {
+                mpWidget.value = Number(resolutionMP(width, height).toFixed(6));
+            }
             ensureNodeSize(this);
             requestAnimationFrame(() => {
                 ensureNodeSize(this);
@@ -373,10 +525,20 @@ app.registerExtension({
 
         const origOnConfigure = nodeType.prototype.onConfigure;
         nodeType.prototype.onConfigure = function () {
+            const configuredWidgetCount = arguments[0]?.widgets_values?.length ?? 0;
             origOnConfigure?.apply(this, arguments);
             initState(this);
             requestAnimationFrame(() => {
                 installWidgetCallbacks(this);
+                const state = initState(this);
+                const width = Number(getWidget(this, "width")?.value) || 1024;
+                const height = Number(getWidget(this, "height")?.value) || 1024;
+                state.lastW = width;
+                state.lastH = height;
+                if (configuredWidgetCount < 5) {
+                    const mpWidget = getWidget(this, "target_mp");
+                    if (mpWidget) mpWidget.value = Number(resolutionMP(width, height).toFixed(6));
+                }
                 ensureNodeSize(this);
                 this.setDirtyCanvas(true, true);
             });
@@ -391,6 +553,9 @@ app.registerExtension({
 
         const origMouseDown = nodeType.prototype.onMouseDown;
         nodeType.prototype.onMouseDown = function (e, localPos) {
+            if (e && "button" in e && e.button !== 0) {
+                return origMouseDown?.apply(this, arguments);
+            }
             const hit = hitTest(this, localPos[0], localPos[1]);
             if (hit) {
                 const state = initState(this);
@@ -402,12 +567,15 @@ app.registerExtension({
                 state.startMouse = [localPos[0], localPos[1]];
                 state.startW = snapVal(Number(wW?.value) || 1024, div);
                 state.startH = snapVal(Number(wH?.value) || 1024, div);
+                state.startRatio = currentTargetRatio(this);
                 state.lastW = state.startW;
                 state.lastH = state.startH;
 
-                if (wW) wW.value = state.startW;
-                if (wH) wH.value = state.startH;
+                withSyncGuard(this, () => setResolution(
+                    this, state.startW, state.startH, true
+                ));
 
+                installDragTermination(this);
                 this.setDirtyCanvas(true, true);
                 return true;
             }
@@ -422,7 +590,8 @@ app.registerExtension({
                 return origMouseMove?.apply(this, arguments);
             }
 
-            if (state.drag === "move") {
+            if (e && "buttons" in e && !(e.buttons & 1)) {
+                endDrag(this);
                 return true;
             }
 
@@ -455,26 +624,21 @@ app.registerExtension({
             newH = clampVal(newH, MIN_PX, MAX_PX);
 
             if (isCornerDrag(state.drag)) {
-                const resized = cornerResize(state.startW, state.startH, newW, newH, dx, dy, div);
+                const resized = cornerResize(newW, newH, state.startRatio, div);
                 newW = resized.width;
                 newH = resized.height;
             } else {
                 newW = snapVal(newW, div);
                 newH = snapVal(newH, div);
-
-                if (isEdgeDrag(state.drag)) {
-                    setAspectPresetFree(this);
-                }
             }
 
             newW = clampVal(newW, div, MAX_PX);
             newH = clampVal(newH, div, MAX_PX);
 
-            wW.value = newW;
-            wH.value = newH;
-            state.lastW = newW;
-            state.lastH = newH;
-            this.setDirtyCanvas(true, true);
+            withSyncGuard(this, () => {
+                if (isEdgeDrag(state.drag)) setAspectPresetFree(this);
+                setResolution(this, newW, newH, true);
+            });
             return true;
         };
 
@@ -482,12 +646,17 @@ app.registerExtension({
         nodeType.prototype.onMouseUp = function () {
             const state = initState(this);
             if (state.drag) {
-                state.drag = null;
-                state.startMouse = null;
+                endDrag(this);
                 return true;
             }
 
             return origMouseUp?.apply(this, arguments);
+        };
+
+        const origOnRemoved = nodeType.prototype.onRemoved;
+        nodeType.prototype.onRemoved = function () {
+            endDrag(this);
+            return origOnRemoved?.apply(this, arguments);
         };
     },
 });

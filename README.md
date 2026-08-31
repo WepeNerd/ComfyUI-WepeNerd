@@ -245,8 +245,9 @@ An interactive visual resolution picker. Drag a box to set your output dimension
 - Drag side handles to change one axis at a time, updating the aspect ratio as the pixel size changes
 - Drag corner handles to scale the resolution while preserving the current aspect ratio
 - Choose an aspect ratio preset (16:9, 4:3, 1:1, 9:16, and more) to reshape the box before dragging
+- Enter a Target MP value to generate a nearby divisor-aligned resolution at the selected aspect
 - Use the width/height input arrows to step by the current divisor value
-- Real-time dimension readout with ratio label on the box
+- Real-time dimension, megapixel, target-ratio, and actual-ratio readout on the box
 - Divisor snapping (32, 16, 8, 64) keeps every output cleanly divisible
 - Grid overlay shows divisor increments
 
@@ -255,6 +256,7 @@ An interactive visual resolution picker. Drag a box to set your output dimension
 | `width` / `height` | Resolution (also set by dragging the box); arrow buttons step by the selected divisor |
 | `aspect_ratio` | Preset ratio to apply, or Free for the current/custom ratio |
 | `divisor` | Snap grid: 32 (default), 16, 8, or 64 |
+| `target_mp` | Resolution helper that scales width/height toward a requested megapixel area |
 
 | Output | Type | Description |
 |---|---|---|
