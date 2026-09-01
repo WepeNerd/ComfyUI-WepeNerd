@@ -29,7 +29,7 @@ Restart ComfyUI. Nodes appear under the **WepeNerd/Resolution**, **WepeNerd/3D**
 
 **Category:** `WepeNerd/Local AI`
 
-The normal workflow has four simple nodes:
+The normal workflow has five simple nodes:
 
 ```text
 Local AI Model
@@ -37,13 +37,15 @@ Local AI Model
         |
         +--> Prompt Enhancer
         |      skill: H3 or Krea 2
+        +--> H3 Prompt Enhancer
+        |      mode/task/action-detail controls
         |
         +--> Image Captioner
         |
         +--> Video Captioner
 ```
 
-`Local AI Model` uses safe defaults, finds `llama-server` automatically, and releases its external CUDA allocation after each generation. `Prompt Enhancer` includes researched, local H3 and Krea 2 skills. Image batches produce one caption per image. Video captioning automatically uses native video only when the backend explicitly reports support; otherwise it samples chronological frames with memory-safe seeking.
+`Local AI Model` uses safe defaults, finds `llama-server` automatically, and releases its external CUDA allocation after each generation. `Prompt Enhancer` includes researched, local H3 and Krea 2 skills. `H3 Prompt Enhancer` adds H3-specific mode, task, action-detail, and enhancement controls while using the same local model backend. Image batches produce one caption per image. Video captioning automatically uses native video only when the backend explicitly reports support; otherwise it samples chronological frames with memory-safe seeking.
 
 Put model files here (subfolders are supported):
 
@@ -76,6 +78,7 @@ Available nodes:
 |---|---|
 | `Local AI Model` | Select a model and optional projector with safe defaults |
 | `Prompt Enhancer` | Rewrite a prompt using the bundled H3, Krea 2, or a custom skill |
+| `H3 Prompt Enhancer` | Compile an H3 prompt using explicit generation mode, task, action detail, and enhancement settings |
 | `Image Captioner` | Caption every image in a ComfyUI `IMAGE` batch |
 | `Video Captioner` | Automatically caption native video or sampled chronological frames |
 
@@ -300,6 +303,11 @@ Takes a source width/height and proportionally resizes to a target, snapped to a
 ---
 
 ## Changelog
+
+### 2026-08-25 — H3 prompt compiler
+
+- Add a dedicated `H3 Prompt Enhancer` with mode, task, action-detail, and enhancement controls.
+- Upgrade the bundled H3 skill to the ambiguity-focused v2 compiler while retaining the generic `Prompt Enhancer` and existing workflows.
 
 ### 2026-08-20 — Local AI simplified workflow
 

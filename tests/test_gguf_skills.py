@@ -14,7 +14,10 @@ class SkillTests(unittest.TestCase):
         skills.clear_skill_cache()
 
     def test_bundled_h3_and_krea2_load(self):
-        self.assertIn("MiniMax H3", skills.load_skill("h3"))
+        h3 = skills.load_skill("h3")
+        self.assertIn("MiniMax H3 Prompt Enhancement Skill v2", h3)
+        self.assertIn("Central principle: ambiguity management", h3)
+        self.assertIn("Detailed visible mechanics", h3)
         self.assertIn("Krea 2", skills.load_skill("Krea 2"))
 
     def test_traversal_is_rejected(self):

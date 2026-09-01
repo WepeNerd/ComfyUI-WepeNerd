@@ -35,6 +35,26 @@ PROMPT_STYLES = {
     "sdxl": "Rewrite as a concise SDXL image prompt using concrete visual concepts, composition, lighting, lens or viewpoint, materials, and style. Return only the prompt.",
 }
 
+H3_MODES = ["Auto", "T2V", "I2V", "Ref2V", "Ref2VA", "FL2V", "FL2VA"]
+H3_TASKS = [
+    "Auto",
+    "General",
+    "Precise Action",
+    "Camera Movement",
+    "Motion Transfer",
+    "Video Edit",
+    "Character Replace",
+    "Object / Clothing Edit",
+    "Preserve + Change",
+    "Physics / VFX",
+    "Dialogue",
+    "Multi-Speaker",
+    "Scene / Cut Structure",
+    "Multi-Shot",
+]
+H3_ACTION_DETAIL = ["Auto", "Semantic", "Detailed Visible Mechanics"]
+H3_ENHANCEMENT = ["Smart", "Light", "Strict"]
+
 IMAGE_CAPTION_STYLES = {
     "dataset_natural": "Write one accurate natural-language dataset caption. Describe visible subjects, actions, setting, composition, viewpoint, lighting, and notable details. Do not invent facts. Return only the caption.",
     "detailed_visual": "Describe the image in precise visual detail, including subjects, spatial relationships, composition, viewpoint, lighting, color, texture, and materials. Do not infer unseen facts. Return only the description.",
@@ -668,6 +688,51 @@ class WN_PromptEnhancer:
         return (_run_payloads(model, [payload])[0],)
 
 
+class WN_H3PromptEnhancer:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("GGUF_LLM_CONFIG",),
+                "prompt": ("STRING", {"multiline": True, "default": ""}),
+                "mode": (H3_MODES, {"default": "Auto"}),
+                "task": (H3_TASKS, {"default": "Auto"}),
+                "action_detail": (H3_ACTION_DETAIL, {"default": "Auto"}),
+                "enhancement": (H3_ENHANCEMENT, {"default": "Smart"}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("enhanced_prompt",)
+    FUNCTION = "enhance"
+    CATEGORY = "WepeNerd/Local AI"
+
+    def enhance(
+        self,
+        model,
+        prompt,
+        mode="Auto",
+        task="Auto",
+        action_detail="Auto",
+        enhancement="Smart",
+    ):
+        _validate_request(model, prompt, 2048)
+        context = (
+            "H3 ENHANCER SETTINGS\n"
+            f"Generation mode: {mode}\n"
+            f"Task: {task}\n"
+            f"Action detail: {action_detail}\n"
+            f"Enhancement level: {enhancement}\n\n"
+            "USER REQUEST\n"
+            f"{prompt.strip()}"
+        )
+        payload = _make_payload(
+            context, load_skill("h3"), 2048, 0.2, 0.8, 20, 0.0,
+            1.05, 0.0, 0.0, 0, "none",
+        )
+        return (_run_payloads(model, [payload])[0],)
+
+
 _CLEAN_IMAGE_STYLES = {
     "Dataset": "dataset_natural",
     "Detailed": "detailed_visual",
@@ -808,6 +873,7 @@ class WN_GGUFLLMStatus:
 NODE_CLASS_MAPPINGS = {
     "WN_LocalAIModel": WN_LocalAIModel,
     "WN_PromptEnhancer": WN_PromptEnhancer,
+    "WN_H3PromptEnhancer": WN_H3PromptEnhancer,
     "WN_ImageCaptioner": WN_ImageCaptioner,
     "WN_VideoCaptioner": WN_VideoCaptioner,
     "WN_GGUFLLMConfig": WN_GGUFLLMConfig,
@@ -822,6 +888,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "WN_LocalAIModel": "Local AI Model",
     "WN_PromptEnhancer": "Prompt Enhancer",
+    "WN_H3PromptEnhancer": "H3 Prompt Enhancer",
     "WN_ImageCaptioner": "Image Captioner",
     "WN_VideoCaptioner": "Video Captioner",
     "WN_GGUFLLMConfig": "Local AI Model (Advanced)",

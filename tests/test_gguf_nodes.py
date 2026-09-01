@@ -34,13 +34,33 @@ class NodeCompatibilityTests(unittest.TestCase):
         self.assertTrue(expected <= nodes.NODE_CLASS_MAPPINGS.keys())
 
     def test_clean_local_ai_nodes_are_registered_and_use_clean_category(self):
-        expected = {"WN_LocalAIModel", "WN_PromptEnhancer", "WN_ImageCaptioner", "WN_VideoCaptioner"}
+        expected = {
+            "WN_LocalAIModel", "WN_PromptEnhancer", "WN_H3PromptEnhancer",
+            "WN_ImageCaptioner", "WN_VideoCaptioner",
+        }
         self.assertTrue(expected <= nodes.NODE_CLASS_MAPPINGS.keys())
         for node_id in expected:
             self.assertEqual(nodes.NODE_CLASS_MAPPINGS[node_id].CATEGORY, "WepeNerd/Local AI")
             self.assertNotIn("GGUF", nodes.NODE_DISPLAY_NAME_MAPPINGS[node_id])
         self.assertEqual(nodes.WN_LocalAIModel.RETURN_TYPES, ("GGUF_LLM_CONFIG",))
         self.assertEqual(nodes.WN_LocalAIModel.RETURN_NAMES, ("model",))
+
+    def test_h3_prompt_enhancer_inputs_and_defaults(self):
+        required = nodes.WN_H3PromptEnhancer.INPUT_TYPES()["required"]
+        self.assertEqual(
+            list(required),
+            ["model", "prompt", "mode", "task", "action_detail", "enhancement"],
+        )
+        self.assertEqual(required["mode"][0], nodes.H3_MODES)
+        self.assertEqual(required["task"][0], nodes.H3_TASKS)
+        self.assertEqual(required["action_detail"][0], nodes.H3_ACTION_DETAIL)
+        self.assertEqual(required["enhancement"][0], nodes.H3_ENHANCEMENT)
+        self.assertEqual(required["mode"][1]["default"], "Auto")
+        self.assertEqual(required["task"][1]["default"], "Auto")
+        self.assertEqual(required["action_detail"][1]["default"], "Auto")
+        self.assertEqual(required["enhancement"][1]["default"], "Smart")
+        self.assertEqual(nodes.WN_H3PromptEnhancer.RETURN_NAMES, ("enhanced_prompt",))
+        self.assertEqual(nodes.NODE_DISPLAY_NAME_MAPPINGS["WN_H3PromptEnhancer"], "H3 Prompt Enhancer")
 
     def test_clean_model_builds_existing_config_type_with_safe_release(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -118,6 +138,45 @@ class NodeCompatibilityTests(unittest.TestCase):
             payload = run.call_args.args[1][0]
             self.assertEqual(payload["reasoning_effort"], "none")
             self.assertEqual(payload["messages"][0]["content"], "SKILL TEXT")
+
+    def test_h3_prompt_enhancer_passes_selected_settings_and_stable_defaults(self):
+        cases = [
+            ("T2V", "Precise Action", "Auto", "Smart"),
+            ("I2V", "Camera Movement", "Semantic", "Light"),
+            ("Ref2V", "Character Replace", "Detailed Visible Mechanics", "Strict"),
+            ("FL2VA", "General", "Auto", "Smart"),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            config = config_in(Path(directory))
+            for mode, task, action_detail, enhancement in cases:
+                with self.subTest(mode=mode, task=task), mock.patch.object(
+                    nodes, "load_skill", return_value="H3 SKILL V2"
+                ) as load, mock.patch.object(nodes, "_run_payloads", return_value=["compiled"] ) as run:
+                    result = nodes.WN_H3PromptEnhancer().enhance(
+                        config,
+                        "A man inserts a coin into an arcade machine.",
+                        mode,
+                        task,
+                        action_detail,
+                        enhancement,
+                    )
+                self.assertEqual(result, ("compiled",))
+                load.assert_called_once_with("h3")
+                payload = run.call_args.args[1][0]
+                self.assertEqual(payload["max_tokens"], 2048)
+                self.assertEqual(payload["temperature"], 0.2)
+                self.assertEqual(payload["top_p"], 0.8)
+                self.assertEqual(payload["top_k"], 20)
+                self.assertEqual(payload["min_p"], 0.0)
+                self.assertEqual(payload["repeat_penalty"], 1.05)
+                self.assertEqual(payload["reasoning_effort"], "none")
+                self.assertEqual(payload["messages"][0], {"role": "system", "content": "H3 SKILL V2"})
+                context = payload["messages"][1]["content"]
+                self.assertIn(f"Generation mode: {mode}", context)
+                self.assertIn(f"Task: {task}", context)
+                self.assertIn(f"Action detail: {action_detail}", context)
+                self.assertIn(f"Enhancement level: {enhancement}", context)
+                self.assertTrue(context.endswith("A man inserts a coin into an arcade machine."))
 
     def test_system_override_wins_over_bundled_legacy_skill(self):
         with mock.patch.object(nodes, "load_skill") as load:
