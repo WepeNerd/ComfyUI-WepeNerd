@@ -19,11 +19,33 @@ cd ComfyUI-WepeNerd
 pip install -r requirements.txt
 ```
 
-Restart ComfyUI. Nodes appear under the **WepeNerd/Resolution**, **WepeNerd/3D**, **WepeNerd/Image**, **WepeNerd/Video**, and **WepeNerd/Local AI** categories.
+Restart ComfyUI. Nodes appear under the **WepeNerd/Utilities**,
+**WepeNerd/Resolution**, **WepeNerd/3D**, **WepeNerd/Image**,
+**WepeNerd/Video**, and **WepeNerd/Local AI** categories.
 
 ---
 
 ## Nodes
+
+### Slider
+
+A standardized semantic `-1 → 0 → +1` control that outputs a normal ComfyUI
+`FLOAT`. Connect its `strength` output to `strength_model`, `strength_clip`, or
+any other compatible FLOAT input. It maps LOW, CENTER, and HIGH independently,
+so positive-only, asymmetric, and reversed ranges work without changing the
+everyday slider interface.
+
+- Name each control with `Label` (for example, Realism, Age, or Detail).
+- Set LOW, CENTER, HIGH, and Curve for the control's semantic range.
+- Use **Hide Calibration** for the compact everyday view; right-click the node
+  and choose **Show Calibration** to reopen it. The visibility state is saved.
+- Drag near the center to snap to exactly `0`; hold Shift to bypass snapping.
+- Double-click the track, or use **Reset Slider to Center** in the node context
+  menu, to reset the normalized position to `0`.
+
+For a positive-only `0 → 3` range, use LOW `0`, CENTER `1.5`, and HIGH `3`,
+so both halves of the control remain useful. The Slider only produces a FLOAT;
+it does not select or load LoRAs.
 
 ### Local AI
 
@@ -303,6 +325,12 @@ Takes a source width/height and proportionally resizes to a target, snapped to a
 ---
 
 ## Changelog
+
+### 2026-09-05 — Slider
+
+- Add the `Slider` FLOAT utility with a normalized LOW/CENTER/HIGH interface,
+  asymmetric calibration, curve control, compact mode, center snapping,
+  and a labeled red-neutral-green graphical control.
 
 ### 2026-08-25 — H3 prompt compiler
 
