@@ -10,6 +10,7 @@ import os
 from .drag_resolution import WN_DragResolution
 from .liquify_node import WN_LiquifyImage
 from .slider_node import WN_Slider
+from .masked_lora_node import WepeNerdLoadLoraMasked, WN_MaskedLoraSnapshot
 from .video_frame_count_node import WN_VideoExactFramesFPS
 from .wn_gguf_nodes import (
     NODE_CLASS_MAPPINGS as GGUF_NODE_CLASS_MAPPINGS,
@@ -706,6 +707,8 @@ NODE_CLASS_MAPPINGS = {
     "WN_3DProductPlacement": WN_3DProductPlacement,
     "WN_LiquifyImage": WN_LiquifyImage,
     "WN_Slider": WN_Slider,
+    "WepeNerdLoadLoraMasked": WepeNerdLoadLoraMasked,
+    "WN_MaskedLoraSnapshot": WN_MaskedLoraSnapshot,
     "WN_VideoExactFramesFPS": WN_VideoExactFramesFPS,
 }
 
@@ -716,6 +719,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "WN_3DProductPlacement": "3D Product Placement (WepeNerd)",
     "WN_LiquifyImage": "Liquify Image (WepeNerd)",
     "WN_Slider": "Slider",
+    "WepeNerdLoadLoraMasked": "Load LoRA Masked",
+    "WN_MaskedLoraSnapshot": "Masked LoRA Image Snapshot (internal)",
     "WN_VideoExactFramesFPS": "Exact Video Frames/FPS (WepeNerd)",
 }
 

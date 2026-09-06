@@ -27,6 +27,62 @@ Restart ComfyUI. Nodes appear under the **WepeNerd/Utilities**,
 
 ## Nodes
 
+### Load LoRA Masked
+
+**Category:** `WepeNerd/Loaders` · **Model:** native floating-point or INT8 ConvRot Krea2.
+
+Use ComfyUI's **Load Diffusion Model** loader, including for native INT8 ConvRot
+checkpoints. The base layer retains its quantized forward calculation; the masked
+LoRA/LoKr contribution runs separately in the activation dtype. The masked node does
+not expand the base weights to floating point. Ordinary global LoRA patches still
+follow ComfyUI's own weight patching and requantization behavior.
+
+Connect MODEL, choose an installed LoRA and set strength (negative values are supported).
+Open **Edit mask** and paint with the brush, rectangle or eraser. Empty masks have no
+effect. The magenta overlay is a fixed 45% display preview; painted interiors apply
+the full selected strength. Undo restores a whole gesture, image replacement or Clear.
+
+Drop/open an image to use its exact oriented dimensions, or paint on the default
+1024 × 1024 blank canvas. Masks map proportionally to the sampled image grid; use a
+reference with the intended aspect ratio for aligned regions. The editor follows the
+compact icon-toolbar layout, with explicit image loading and a removable reference.
+Right-click the node for **Open reference image…** while IMAGE is connected.
+
+**Load input** uses an available upstream preview. Otherwise it offers **Run upstream**,
+which queues only the connected IMAGE ancestors and a private snapshot sink. It uses
+the first batch image and never queues downstream generation. Connecting or removing
+a wire does not replace the reference. Different-size replacements require Replace /
+Cancel when painted. Same-size replacements retain the mask.
+
+Mask PNGs, reference PNGs, geometry, brush size and folded state are saved in the
+workflow; image data is embedded so exporting the workflow does not lose those assets.
+LoRA/model files must still be installed on the destination machine. Uploaded references
+and executed masks also use ComfyUI's input assets. Duplicates have independent editors.
+
+Chained masked nodes add independent spatial contributions and preserve ordinary
+global LoRA weight patches. Supported adapters are linear LoRA and full/factored LoKr,
+including alpha/rank scaling. DoRA, convolution/Tucker, reshape and other adapter formats
+are rejected on spatial layers. Text, timestep, modulation and normalization layers are
+omitted and diagnosed in logs. Native still-image reference layouts `index` and
+`index_timestep_zero` are supported; reference tokens themselves are not adapted.
+
+A full mask need not equal a global loader because of the omitted layers. Attention and
+denoising can spread indirect effects beyond the painted area; use final compositing
+when exact pixel preservation is needed. Custom INT8 loaders, GGUF, FP8, NVFP4, temporal inputs and patches
+that rearrange input tokens are outside v1 support. Real-model fidelity, generation
+timing and peak VRAM have not been benchmarked.
+
+Validation: 85 unit tests plus the CPU native Krea2 integration check in
+`tests/validate_masked_lora_comfy.py`, covering LoRA/LoKr math, reference layouts,
+independent same-file regions, global patch composition, clones and cleanup.
+`tests/validate_masked_lora_int8.py` checks native INT8 ConvRot on CPU and, with
+`--cuda`, GPU. It covers mixed floating-point layers, masks, LoRA/LoKr, chained regions,
+global LoRAs before/after, CPU/device transfers and packed-weight preservation.
+Pass `--checkpoint PATH` to also validate the first query layer from a native Krea2
+checkpoint. GPU validation included the 6144 × 6144 query layer from
+`KREA2_raw-int8-convrot-learned.safetensors` on an RTX 4090; this is a layer test,
+not a full-model image-quality or performance benchmark.
+
 ### Slider
 
 A standardized semantic `-1 → 0 → +1` control that outputs a normal ComfyUI
