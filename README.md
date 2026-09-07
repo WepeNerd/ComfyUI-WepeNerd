@@ -162,6 +162,29 @@ Available nodes:
 
 Prompt enhancement and caption nodes set `reasoning_effort` to `none`. Returned `<think>...</think>` blocks are removed, and hidden `reasoning_content` is never returned as a prompt or caption.
 
+#### H3 prompt enhancement
+
+`H3 Prompt Enhancer` preserves scene continuity: one `[Shot N]` block can contain several cuts or camera angles. A new tag marks a major scene/sequence boundary. Explicit action detail takes precedence over task defaults; `Strict` strengthens binding without overriding `Semantic`. Enhancement controls expression and organization; creative freedom controls permission to invent.
+
+The optional inputs are:
+
+| Input | Use |
+|---|---|
+| `duration_seconds` | Effective generated clip length. `0` means unspecified; new events use relative timing and first/last-frame alignment uses a semantic ending instead of an invented duration. |
+| `reference_context` | Supplied asset aliases, roles, and constraints. For example: `<Picture 1>: replacement identity. <Video 1>: source motion and camera. Video audio is not enabled.` |
+| `max_tokens` | Output budget, default 2048. Increase for long prompts if the model context has room. |
+| `creative_freedom` | `Preserve` (default) clarifies existing ideas. `Fill in details` enriches an outline with setting, atmosphere, camera, sound, and natural action progression. `Develop scenario` can also add supporting beats, reactions, and transitions. |
+
+For a basic outline such as `A traveler finds an abandoned lighthouse`, use `Fill in details` with `Smart`. Choose `Develop scenario` when you also want the LLM to develop what happens. Explicit instructions, reference constraints, authored scene plans, and supplied dialogue/text take priority at every level. New dialogue, visible wording, lyrics, and music require a request. Expansion respects the clip duration and adds useful content rather than targeting a longer word count. Sampling stays the same across freedom levels; the permission is conveyed through the model instructions.
+
+The enhancer receives text only. `Auto` infers from that text; it cannot inspect media or the downstream graph. Select the mode explicitly when known. Specific modes load only their relevant appendix; the generic H3 skill remains complete.
+
+Before inference, the dedicated H3 node asks the local server to render and tokenize the chat, then checks that input plus output budget fits. Returned prompts are checked for complete sections, explicit scene plans, identifiable dialogue/text literals, supplied subject/speaker labels, reference asset numbering, and timed-event bounds. Invalid output raises an actionable error. These checks cannot prove that every creative instruction was followed. Token-truncated output is rejected by the shared backend rather than returned as a usable prompt.
+
+Both simple prompt enhancers recognize Qwen 3.8 27B from the model filename, including the installed Huihui derivative. They explicitly set `enable_thinking=false` and use [Qwen's instruct sampling recommendation](https://huggingface.co/Qwen/Qwen3.8-27B): temperature 0.7, top-p 0.8, top-k 20, min-p 0, repetition penalty 1.0, and presence penalty 1.5. Frequency penalty stays at zero. Other models retain the existing conservative sampling. A renamed model file that omits its Qwen version/size will use those conservative defaults.
+
+Restart ComfyUI after installing this update to load the new inputs and Python behavior. Existing node IDs, required input order, connection types, and output names are unchanged.
+
 Video auto mode checks llama-server `/props`: it uses typed native `input_video` only when video support is explicit, otherwise it sends timestamped JPEG frames. Missing metadata is treated as unknown and falls back conservatively. File-backed clips use PyAV seek sampling, so memory scales with selected frames rather than total clip length. Audio and dialogue are not inferred.
 
 #### Local AI / Advanced

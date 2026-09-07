@@ -188,6 +188,42 @@ class ServerTests(unittest.TestCase):
             result = server.LlamaServerManager.chat_completion(handle, {"messages": []}, 2.0)
         self.assertEqual(result, "final")
 
+    def test_truncated_stream_never_returns_partial_output(self):
+        handle = server.ServerHandle(FakeProcess(), "127.0.0.1", 1234, (), "model.gguf", server.deque())
+
+        def fake_worker(request, timeout, events, state):
+            for item in ({"delta": {"content": "[Shot 1] She opens the"}}, {"delta": {}, "finish_reason": "length"}):
+                events.put(("line", ("data: " + json.dumps({"choices": [item]})).encode()))
+            events.put(("line", b"data: [DONE]"))
+            events.put(("done", None))
+
+        with mock.patch.object(server.LlamaServerManager, "_stream_worker", side_effect=fake_worker):
+            with self.assertRaisesRegex(server.RequestRejectedError, "truncated"):
+                server.LlamaServerManager.chat_completion(handle, {"messages": []}, 2.0)
+
+    def test_text_context_check_counts_rendered_template_and_reserves_output(self):
+        handle = server.ServerHandle(FakeProcess(), "127.0.0.1", 1234, (), "model.gguf", server.deque())
+        payload = {"messages": [{"role": "system", "content": "Instructions"}, {"role": "user", "content": "Request"}],
+                   "max_tokens": 100, "chat_template_kwargs": {"enable_thinking": False}, "reasoning_effort": "none"}
+
+        def fake_urlopen(request, timeout):
+            body = json.loads(request.data)
+            if request.full_url.endswith("/apply-template"):
+                self.assertEqual(body, payload)
+                return FakeResponse(200, json.dumps({"prompt": "rendered chat including assistant prefix"}).encode())
+            self.assertTrue(request.full_url.endswith("/tokenize"))
+            self.assertEqual(body["content"], "rendered chat including assistant prefix")
+            self.assertTrue(body["parse_special"])
+            return FakeResponse(200, json.dumps({"tokens": list(range(200))}).encode())
+
+        with mock.patch.object(server.urllib.request, "urlopen", side_effect=fake_urlopen):
+            server.LlamaServerManager.validate_text_context(handle, payload, 300, 2)
+            with self.assertRaisesRegex(server.RequestRejectedError, "200 input.*100 output"):
+                server.LlamaServerManager.validate_text_context(handle, payload, 299, 2)
+            handle.props = {"default_generation_settings": {"n_ctx": 250}}
+            with self.assertRaisesRegex(server.RequestRejectedError, "context_size is 250"):
+                server.LlamaServerManager.validate_text_context(handle, payload, 8192, 2)
+
     def test_interrupt_propagates_from_stream_poll(self):
         class FakeInterrupt(BaseException):
             pass

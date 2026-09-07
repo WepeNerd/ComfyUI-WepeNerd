@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import math
 import os
 import re
 import shlex
 import time
 
+from .h3_prompt import select_h3_skill, validate_h3_prompt
 from .wn_gguf_config import WNGGUFConfig
 from .wn_gguf_image import comfy_image_to_data_url, encode_image_batch
 from .wn_gguf_models import discover_models, discover_projectors, resolve_choice
@@ -54,6 +57,7 @@ H3_TASKS = [
 ]
 H3_ACTION_DETAIL = ["Auto", "Semantic", "Detailed Visible Mechanics"]
 H3_ENHANCEMENT = ["Smart", "Light", "Strict"]
+H3_CREATIVE_FREEDOM = ["Preserve", "Fill in details", "Develop scenario"]
 
 IMAGE_CAPTION_STYLES = {
     "dataset_natural": "Write one accurate natural-language dataset caption. Describe visible subjects, actions, setting, composition, viewpoint, lighting, and notable details. Do not invent facts. Return only the caption.",
@@ -143,6 +147,18 @@ def _make_payload(
     )
 
 
+def _enhancement_payload(model_path, prompt, system_prompt, max_tokens=2048):
+    model_name = re.sub(r"[^a-z0-9]", "", os.path.basename(model_path).lower())
+    qwen38 = "qwen38" in model_name and "27b" in model_name
+    payload = _make_payload(
+        prompt, system_prompt, max_tokens, 0.7 if qwen38 else 0.2, 0.8, 20, 0.0,
+        1.0 if qwen38 else 1.05, 1.5 if qwen38 else 0.0, 0.0, 0, "none",
+    )
+    if qwen38:
+        payload["chat_template_kwargs"] = {"enable_thinking": False}
+    return payload
+
+
 def _acquire_prepared(config: WNGGUFConfig):
     if not SERVER_MANAGER.is_compatible(config):
         SERVER_MANAGER.stop()
@@ -162,7 +178,7 @@ def _finish_request(config: WNGGUFConfig, error: BaseException | None = None) ->
         SERVER_MANAGER.request_finished(config)
 
 
-def _run_payloads(config: WNGGUFConfig, payloads: list[dict], require_image: bool = False) -> list[str]:
+def _run_payloads(config: WNGGUFConfig, payloads: list[dict], require_image: bool = False, check_text_context: bool = False) -> list[str]:
     error = None
     try:
         handle = _acquire_prepared(config)
@@ -177,6 +193,8 @@ def _run_payloads(config: WNGGUFConfig, payloads: list[dict], require_image: boo
         progress = _progress_bar(len(payloads)) if len(payloads) > 1 else None
         results = []
         for payload in payloads:
+            if check_text_context:
+                SERVER_MANAGER.validate_text_context(handle, payload, config.context_size, config.request_timeout_s)
             results.append(SERVER_MANAGER.chat_completion(handle, payload, config.request_timeout_s))
             if progress is not None:
                 progress.update(1)
@@ -681,10 +699,7 @@ class WN_PromptEnhancer:
         if style is None:
             raise ValueError(f"Unknown Prompt Enhancer skill: {skill}")
         system_prompt = _style_prompt(style, PROMPT_STYLES, system_prompt_override)
-        payload = _make_payload(
-            prompt, system_prompt, 2048, 0.2, 0.8, 20, 0.0,
-            1.05, 0.0, 0.0, 0, "none",
-        )
+        payload = _enhancement_payload(model.model_path, prompt, system_prompt)
         return (_run_payloads(model, [payload])[0],)
 
 
@@ -699,7 +714,17 @@ class WN_H3PromptEnhancer:
                 "task": (H3_TASKS, {"default": "Auto"}),
                 "action_detail": (H3_ACTION_DETAIL, {"default": "Auto"}),
                 "enhancement": (H3_ENHANCEMENT, {"default": "Smart"}),
-            }
+            },
+            "optional": {
+                "duration_seconds": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 3600.0, "step": 0.01,
+                    "tooltip": "Effective generated clip duration. 0 = unspecified; use relative timing."}),
+                "reference_context": ("STRING", {"multiline": True, "default": "",
+                    "tooltip": "Describe supplied references and their roles, using the workflow's actual aliases. The enhancer cannot see the media."}),
+                "max_tokens": ("INT", {"default": 2048, "min": 128, "max": 32768,
+                    "tooltip": "Output budget. Increase for long reference prompts; must fit alongside instructions in the model context."}),
+                "creative_freedom": (H3_CREATIVE_FREEDOM, {"default": "Preserve",
+                    "tooltip": "Preserve: clarify existing ideas. Fill in details: enrich an outline. Develop scenario: also add supporting beats and transitions. Explicit instructions and references always take priority."}),
+            },
         }
 
     RETURN_TYPES = ("STRING",)
@@ -715,22 +740,32 @@ class WN_H3PromptEnhancer:
         task="Auto",
         action_detail="Auto",
         enhancement="Smart",
+        duration_seconds=0.0,
+        reference_context="",
+        max_tokens=2048,
+        creative_freedom="Preserve",
     ):
-        _validate_request(model, prompt, 2048)
-        context = (
-            "H3 ENHANCER SETTINGS\n"
-            f"Generation mode: {mode}\n"
-            f"Task: {task}\n"
-            f"Action detail: {action_detail}\n"
-            f"Enhancement level: {enhancement}\n\n"
-            "USER REQUEST\n"
-            f"{prompt.strip()}"
-        )
-        payload = _make_payload(
-            context, load_skill("h3"), 2048, 0.2, 0.8, 20, 0.0,
-            1.05, 0.0, 0.0, 0, "none",
-        )
-        return (_run_payloads(model, [payload])[0],)
+        _validate_request(model, prompt, max_tokens)
+        for name, value, choices in (
+            ("mode", mode, H3_MODES), ("task", task, H3_TASKS),
+            ("action_detail", action_detail, H3_ACTION_DETAIL), ("enhancement", enhancement, H3_ENHANCEMENT),
+            ("creative_freedom", creative_freedom, H3_CREATIVE_FREEDOM),
+        ):
+            if value not in choices:
+                raise ValueError(f"Unknown H3 {name}: {value}")
+        duration = float(duration_seconds)
+        if not math.isfinite(duration) or duration < 0:
+            raise ValueError("duration_seconds must be finite and nonnegative (0 = unspecified)")
+        context = json.dumps({
+            "settings": {"generation_mode": mode, "task": task, "action_detail": action_detail,
+                         "enhancement": enhancement, "duration_seconds": duration,
+                         "creative_freedom": creative_freedom},
+            "reference_context": reference_context.strip(), "user_request": prompt.strip(),
+        }, ensure_ascii=False, indent=2)
+        payload = _enhancement_payload(model.model_path, context,
+            select_h3_skill(load_skill("h3"), mode, creative_freedom), max_tokens)
+        result = _run_payloads(model, [payload], check_text_context=True)[0]
+        return (validate_h3_prompt(result, prompt, mode, duration, reference_context),)
 
 
 _CLEAN_IMAGE_STYLES = {

@@ -1,4 +1,5 @@
 import importlib
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -59,6 +60,10 @@ class NodeCompatibilityTests(unittest.TestCase):
         self.assertEqual(required["task"][1]["default"], "Auto")
         self.assertEqual(required["action_detail"][1]["default"], "Auto")
         self.assertEqual(required["enhancement"][1]["default"], "Smart")
+        optional = nodes.WN_H3PromptEnhancer.INPUT_TYPES()["optional"]
+        self.assertEqual(list(optional), ["duration_seconds", "reference_context", "max_tokens", "creative_freedom"])
+        self.assertEqual(optional["creative_freedom"][0], ["Preserve", "Fill in details", "Develop scenario"])
+        self.assertEqual(optional["creative_freedom"][1]["default"], "Preserve")
         self.assertEqual(nodes.WN_H3PromptEnhancer.RETURN_NAMES, ("enhanced_prompt",))
         self.assertEqual(nodes.NODE_DISPLAY_NAME_MAPPINGS["WN_H3PromptEnhancer"], "H3 Prompt Enhancer")
 
@@ -149,9 +154,18 @@ class NodeCompatibilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             config = config_in(Path(directory))
             for mode, task, action_detail, enhancement in cases:
+                compiled = (
+                    "subject_definitions: The source performer.\nsummary: [reference generation] Replace the performer.\n"
+                    "retention_analysis: Preserve the supplied identity.\ndetailed_description: [Shot 1] He inserts a coin.\n"
+                    if mode.startswith("Ref") else "integrated_multimodal_description: [Shot 1] He inserts a coin.\n"
+                ) + "overall_soundscape: Coin contact.\nnon_diegetic_music: N/A"
+                if mode == "I2V":
+                    compiled = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\n" + compiled
+                if mode == "FL2VA":
+                    compiled = "The target video begins from Picture 1 and reaches Picture 2 at the end of the final scene.\n\n" + compiled
                 with self.subTest(mode=mode, task=task), mock.patch.object(
-                    nodes, "load_skill", return_value="H3 SKILL V2"
-                ) as load, mock.patch.object(nodes, "_run_payloads", return_value=["compiled"] ) as run:
+                    nodes, "load_skill", return_value="H3 SKILL V3"
+                ) as load, mock.patch.object(nodes, "_run_payloads", return_value=[compiled]) as run:
                     result = nodes.WN_H3PromptEnhancer().enhance(
                         config,
                         "A man inserts a coin into an arcade machine.",
@@ -160,7 +174,7 @@ class NodeCompatibilityTests(unittest.TestCase):
                         action_detail,
                         enhancement,
                     )
-                self.assertEqual(result, ("compiled",))
+                self.assertEqual(result, (compiled,))
                 load.assert_called_once_with("h3")
                 payload = run.call_args.args[1][0]
                 self.assertEqual(payload["max_tokens"], 2048)
@@ -170,13 +184,75 @@ class NodeCompatibilityTests(unittest.TestCase):
                 self.assertEqual(payload["min_p"], 0.0)
                 self.assertEqual(payload["repeat_penalty"], 1.05)
                 self.assertEqual(payload["reasoning_effort"], "none")
-                self.assertEqual(payload["messages"][0], {"role": "system", "content": "H3 SKILL V2"})
-                context = payload["messages"][1]["content"]
-                self.assertIn(f"Generation mode: {mode}", context)
-                self.assertIn(f"Task: {task}", context)
-                self.assertIn(f"Action detail: {action_detail}", context)
-                self.assertIn(f"Enhancement level: {enhancement}", context)
-                self.assertTrue(context.endswith("A man inserts a coin into an arcade machine."))
+                self.assertEqual(payload["messages"][0], {"role": "system", "content": "H3 SKILL V3"})
+                context = json.loads(payload["messages"][1]["content"])
+                self.assertEqual(context["settings"], {"generation_mode": mode, "task": task,
+                    "action_detail": action_detail, "enhancement": enhancement, "duration_seconds": 0.0,
+                    "creative_freedom": "Preserve"})
+                self.assertEqual(context["user_request"], "A man inserts a coin into an arcade machine.")
+                self.assertTrue(run.call_args.kwargs["check_text_context"])
+
+    def test_qwen38_enhancement_uses_explicit_non_thinking_and_instruct_sampling(self):
+        for filename in ("Huihui-Qwen3.8-27B-abliterated-Q4_K.gguf", "Qwen3_8-27B-Q5.gguf"):
+            payload = nodes._enhancement_payload(filename, "request", "skill")
+            self.assertEqual(payload["temperature"], 0.7)
+            self.assertEqual(payload["repeat_penalty"], 1.0)
+            self.assertEqual(payload["presence_penalty"], 1.5)
+            self.assertEqual(payload["chat_template_kwargs"], {"enable_thinking": False})
+            self.assertEqual(payload["reasoning_effort"], "none")
+        other = nodes._enhancement_payload("Muse-Glimmer-30B.gguf", "request", "skill")
+        self.assertEqual(other["temperature"], 0.2)
+        self.assertNotIn("chat_template_kwargs", other)
+
+    def test_h3_optional_context_and_output_budget_reach_the_model(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = config_in(Path(directory))
+            text = "integrated_multimodal_description: [Shot 1] A truck stands still.\noverall_soundscape: N/A\nnon_diegetic_music: N/A"
+            with mock.patch.object(nodes, "_run_payloads", return_value=[text]) as run:
+                nodes.WN_H3PromptEnhancer().enhance(config, "A truck", "T2V", duration_seconds=5.0,
+                    reference_context="Keep the truck stationary.", max_tokens=3072)
+            payload = run.call_args.args[1][0]
+            self.assertEqual(payload["max_tokens"], 3072)
+            request = json.loads(payload["messages"][1]["content"])
+            self.assertEqual(request["settings"]["duration_seconds"], 5.0)
+            self.assertEqual(request["reference_context"], "Keep the truck stationary.")
+            self.assertIn("## Mode: T2V", payload["messages"][0]["content"])
+            self.assertNotIn("## Mode: Ref2V", payload["messages"][0]["content"])
+
+    def test_h3_invalid_settings_fail_before_inference(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = config_in(Path(directory))
+            for kwargs in ({"mode": "Other"}, {"creative_freedom": "Other"},
+                           {"duration_seconds": -1}, {"duration_seconds": float("nan")}):
+                with self.subTest(kwargs=kwargs), mock.patch.object(nodes, "_run_payloads") as run:
+                    with self.assertRaises(ValueError):
+                        nodes.WN_H3PromptEnhancer().enhance(config, "A truck", **kwargs)
+                    run.assert_not_called()
+
+    def test_h3_expansion_keeps_literal_and_scene_validation(self):
+        source = '[Shot 1] A traveler says: <d>[English] Stay here.</d>'
+        valid = ('integrated_multimodal_description: ' + source + ' Mist surrounds the traveler.\n'
+                 'overall_soundscape: Wind.\nnon_diegetic_music: N/A')
+        with tempfile.TemporaryDirectory() as directory:
+            config = config_in(Path(directory))
+            for freedom in ("Fill in details", "Develop scenario"):
+                for enhancement in ("Light", "Strict"):
+                    with self.subTest(freedom=freedom, enhancement=enhancement):
+                        with mock.patch.object(nodes, "_run_payloads", return_value=[valid]) as run:
+                            self.assertEqual(nodes.WN_H3PromptEnhancer().enhance(
+                                config, source, "T2V", enhancement=enhancement,
+                                creative_freedom=freedom), (valid,))
+                        payload = run.call_args.args[1][0]
+                        settings = json.loads(payload["messages"][1]["content"])["settings"]
+                        self.assertEqual(settings["creative_freedom"], freedom)
+                        self.assertEqual(settings["enhancement"], enhancement)
+                        for broken in (valid.replace("Stay here.", "Follow me."),
+                                       valid.replace("Mist surrounds", "\n[Shot 2] Mist surrounds")):
+                            with mock.patch.object(nodes, "_run_payloads", return_value=[broken]):
+                                with self.assertRaises(ValueError):
+                                    nodes.WN_H3PromptEnhancer().enhance(
+                                        config, source, "T2V", enhancement=enhancement,
+                                        creative_freedom=freedom)
 
     def test_system_override_wins_over_bundled_legacy_skill(self):
         with mock.patch.object(nodes, "load_skill") as load:

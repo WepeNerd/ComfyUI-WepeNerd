@@ -1,0 +1,448 @@
+{
+  "model": "C:\\SD\\ComfyUI\\models\\LLM\\Huihui-Qwen3.8-27B-abliterated-Q4_K.gguf",
+  "created_at_utc": "2026-09-07T18:57:37.563679+00:00",
+  "kind": "LLM rewrite smoke evaluation, not H3 video-quality testing",
+  "results": [
+    {
+      "case": "simple_i2v",
+      "mode": "I2V",
+      "duration_seconds": 5,
+      "input": "The woman in the starting image slowly turns her head toward the camera. Keep the camera locked off. No music.",
+      "reference_context": "",
+      "sampling": {
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "frequency_penalty": 0.0,
+        "stream": true,
+        "reasoning_effort": "none",
+        "seed": 0,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "output": "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\nintegrated_multimodal_description: [Shot 1] The woman slowly turns her head from her initial position to face the camera directly. The camera remains completely static, maintaining the original framing and angle throughout the movement. Her facial features, hair, and clothing remain consistent with the starting image.\noverall_soundscape: N/A\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 3.09
+    },
+    {
+      "case": "contact",
+      "mode": "T2V",
+      "duration_seconds": 5,
+      "input": "Close-up of a hand inserting a coin into an arcade machine slot. The coin must enter fully before the hand withdraws. No cuts. No music.",
+      "reference_context": "",
+      "sampling": {
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "frequency_penalty": 0.0,
+        "stream": true,
+        "reasoning_effort": "none",
+        "seed": 0,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "output": "integrated_multimodal_description: [Shot 1] Close-up of a hand holding a coin, moving it toward the coin slot of an arcade machine. The coin is inserted into the slot until it enters fully, then the hand withdraws. The camera remains static.\noverall_soundscape: Ambient arcade hum, metallic sound of the coin entering the slot, and the click of the mechanism accepting the coin.\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 2.25
+    },
+    {
+      "case": "orbit",
+      "mode": "I2V",
+      "duration_seconds": 5,
+      "input": "The truck stays parked. The camera travels halfway around it to reveal its rear. Keep the truck stationary. No cuts or music.",
+      "reference_context": "",
+      "sampling": {
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "frequency_penalty": 0.0,
+        "stream": true,
+        "reasoning_effort": "none",
+        "seed": 0,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "output": "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\nintegrated_multimodal_description: [Shot 1] The camera moves in a smooth arc around the parked truck, traveling halfway around its side to reveal the rear. The truck remains completely stationary throughout the movement.\noverall_soundscape: N/A\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 2.33
+    },
+    {
+      "case": "same_scene_cuts",
+      "mode": "T2V",
+      "duration_seconds": 8,
+      "input": "One continuous scene. [Shot 1] A woman walks down an alley. At 00:02.000, cut to a close-up of her face. At 00:05.000, cut to a front full-body view. She keeps walking in the same alley. No music.",
+      "reference_context": "",
+      "sampling": {
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "frequency_penalty": 0.0,
+        "stream": true,
+        "reasoning_effort": "none",
+        "seed": 0,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "output": "integrated_multimodal_description: [Shot 1] A woman walks down an alley. At 00:02.000, cut to a close-up of her face. At 00:05.000, cut to a front full-body view. She keeps walking in the same alley.\noverall_soundscape: Footsteps echoing on the alley pavement and ambient city background noise.\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 2.34
+    },
+    {
+      "case": "endpoints",
+      "mode": "FL2V",
+      "duration_seconds": 8,
+      "input": "The first frame shows a woman holding a closed umbrella; the last frame shows her holding it open overhead. Connect the frames with one continuous opening action. Keep the camera stationary. No music.",
+      "reference_context": "",
+      "sampling": {
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "frequency_penalty": 0.0,
+        "stream": true,
+        "reasoning_effort": "none",
+        "seed": 0,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "output": "How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the 8.00-second mark of the target video.\n\nintegrated_multimodal_description: [Shot 1] A woman stands stationary, holding a closed umbrella in her hand. She begins to open the umbrella, moving her arm to deploy the canopy until it is fully open and positioned overhead. The camera remains stationary throughout the sequence, maintaining a consistent framing of the woman and the umbrella's transition from closed to open.\noverall_soundscape: The sound of the umbrella mechanism unfolding and the fabric canopy snapping open.\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 3.78
+    },
+    {
+      "case": "replacement",
+      "mode": "Ref2V",
+      "duration_seconds": 6,
+      "input": "Replace the performer in <Video 1> with the woman from <Picture 1>. Preserve the source performance, camera, timing, and background. No music.",
+      "reference_context": "<Picture 1> supplies the replacement identity. <Video 1> supplies motion and scene. Its audio is not enabled.",
+      "sampling": {
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "frequency_penalty": 0.0,
+        "stream": true,
+        "reasoning_effort": "none",
+        "seed": 0,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "output": "subject_definitions:\n<Subject 1> The woman from <Picture 1>, featuring her distinct facial features, hair style, and attire.\n<Subject 2> The scene, background, and camera movement trajectory from <Video 1>.\n\nsummary: [reference generation] + [video editing] Replace the performer in <Video 1> with the identity of <Subject 1>, preserving the source motion, camera path, timing, and background environment.\n\nretention_analysis:\n<Subject 1>: attribute_transfer (identity features applied to the performing role)\n<Subject 2>: fully_preserved (motion, camera, timing, background)\n\ndetailed_description:\n[Shot 1] The woman from <Subject 1> performs the actions seen in <Video 1>. She maintains the exact facial expressions, body movements, and timing of the original performance in <Video 1>. The background environment, lighting, and camera movement path are identical to <Video 1>. The camera follows the same trajectory and framing as the source video. The woman's identity remains consistent with <Picture 1> throughout the clip.\n\noverall_soundscape: Ambient sounds matching the environment in <Video 1>, excluding any music.\n\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 5.88
+    },
+    {
+      "case": "literal_dialogue",
+      "mode": "T2V",
+      "duration_seconds": 6,
+      "input": "One scene: a woman (S1) beside a sign reading \"营业中\" says <d>[French] Attends… ne pars pas !</d> After speaking, she closes her lips. Keep the camera static. No music.",
+      "reference_context": "",
+      "sampling": {
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "frequency_penalty": 0.0,
+        "stream": true,
+        "reasoning_effort": "none",
+        "seed": 0,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "output": "integrated_multimodal_description: [Shot 1] A woman (S1) stands beside a sign reading \"营业中\". She speaks: <d>[French] Attends… ne pars pas !</d> After speaking, she closes her lips. The camera remains static.\noverall_soundscape: Ambience of the immediate surroundings; the woman's voice.\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 2.09
+    },
+    {
+      "case": "audio_roles",
+      "mode": "Ref2VA",
+      "duration_seconds": 10,
+      "input": "<Subject 1> from <Picture 1> says <d>[English] Are you ready?</d> Then <Subject 2> from <Picture 2> replies <d>[English] Let us go.</d> Use <Audio 1> only for Subject 1 voice timbre. Keep them in the same room in a single scene. No additional speech or music.",
+      "reference_context": "<Picture 1>: woman on the left. <Picture 2>: man on the right. <Audio 1>: voice-timbre reference, not copied audio or timeline; do not import its transcript.",
+      "sampling": {
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "frequency_penalty": 0.0,
+        "stream": true,
+        "reasoning_effort": "none",
+        "seed": 0,
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "output": "subject_definitions:\n<Subject 1>: The woman identified in Picture 1.\n<Subject 2>: The man identified in Picture 2.\n<Environment>: A single room shared by both subjects.\n\nsummary:\n[reference generation] + [audio reference]: Two subjects in a room exchange a specific two-line dialogue. <Subject 1> speaks first, <Subject 2> replies. <Audio 1> provides voice timbre guidance for <Subject 1> only.\n\nretention_analysis:\n<Subject 1>: fully_preserved (visual identity); reference (voice timbre from Audio 1).\n<Subject 2>: fully_preserved (visual identity).\n<Environment>: fully_preserved (spatial continuity).\n\ndetailed_description:\n[Shot 1] <Subject 1> and <Subject 2> are positioned in the same room. The camera holds a static medium shot framing both subjects. <Subject 1> looks toward <Subject 2> and speaks: <d>[English] Are you ready?</d> After <Subject 1> finishes, <Subject 2> responds: <d>[English] Let us go.</d>\n\noverall_soundscape:\nQuiet indoor ambience. Clear vocal delivery for both speakers. No background noise or foley.\n\nnon_diegetic_music:\nN/A",
+      "validation": "passed",
+      "elapsed_seconds": 6.3
+    }
+  ],
+  "revision_checks": [
+    {
+      "case": "replacement",
+      "mode": "Ref2V",
+      "duration_seconds": 6,
+      "input": "Replace the performer in <Video 1> with the woman from <Picture 1>. Preserve the source performance, camera, timing, and background. No music.",
+      "reference_context": "<Picture 1> supplies the replacement identity. <Video 1> supplies motion and scene. Its audio is not enabled.",
+      "output": "subject_definitions:\n<Subject 1> The woman from <Picture 1>, featuring her distinct facial features, hair style, and attire.\n<Subject 2> The scene environment and camera path derived from <Video 1>, including the background layout, lighting, and specific camera movements.\n\nsummary: [reference generation] Replace the performer in the source video with the woman from the reference image while preserving the original motion, camera work, timing, and background.\n\nretention_analysis:\n<Subject 1>: attribute_transfer (Identity and appearance transferred to the target performer role).\n<Subject 2>: fully_preserved (Motion, camera trajectory, timing, and background elements retained from source).\n\ndetailed_description:\n[Shot 1] The woman from <Picture 1> performs the exact actions, gestures, and movements originally executed by the performer in <Video 1>. The background, lighting, and environmental details remain identical to the source scene. The camera follows the precise path, speed, and framing established in <Video 1>, capturing the woman's performance with the same temporal rhythm and spatial composition. The woman’s facial expressions and body language mirror the source performance, ensuring a seamless substitution where only the identity changes while all dynamic and static scene elements are preserved.\n\noverall_soundscape: Ambient sounds consistent with the source environment in <Video 1>, such as room tone or subtle movement sounds, without any added effects.\n\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 7.17
+    },
+    {
+      "case": "literal_dialogue",
+      "mode": "T2V",
+      "duration_seconds": 6,
+      "input": "One scene: a woman (S1) beside a sign reading \"营业中\" says <d>[French] Attends… ne pars pas !</d> After speaking, she closes her lips. Keep the camera static. No music.",
+      "reference_context": "",
+      "output": "integrated_multimodal_description: [Shot 1] A woman (S1) stands beside a sign reading \"营业中\". She says: <d>[French] Attends… ne pars pas !</d> After speaking, she closes her lips. The camera remains static.\noverall_soundscape: Ambience of the location and the sound of the woman's voice.\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 2.53
+    },
+    {
+      "case": "audio_roles",
+      "mode": "Ref2VA",
+      "duration_seconds": 10,
+      "input": "<Subject 1> from <Picture 1> says <d>[English] Are you ready?</d> Then <Subject 2> from <Picture 2> replies <d>[English] Let us go.</d> Use <Audio 1> only for Subject 1 voice timbre. Keep them in the same room in a single scene. No additional speech or music.",
+      "reference_context": "<Picture 1>: woman on the left. <Picture 2>: man on the right. <Audio 1>: voice-timbre reference, not copied audio or timeline; do not import its transcript.",
+      "output": "subject_definitions:\n<Subject 1>: Woman on the left, identity and appearance based on <Picture 1>.\n<Subject 2>: Man on the right, identity and appearance based on <Picture 2>.\n<Subject 3>: Shared room environment containing <Subject 1> and <Subject 2>.\n<Subject 4>: Voice timbre reference from <Audio 1> applied specifically to <Subject 1>.\n\nsummary: [reference generation + audio reference] A single-scene dialogue interaction where <Subject 1> speaks first, followed by <Subject 2>'s reply, with <Subject 1>'s voice timbre guided by <Audio 1>.\n\nretention_analysis:\n<Subject 1>: fully_preserved (identity/appearance from <Picture 1>); attribute_transfer (voice timbre from <Audio 1>).\n<Subject 2>: fully_preserved (identity/appearance from <Picture 2>).\n<Subject 3>: fully_preserved (spatial relationship and setting).\n<Subject 4>: reference (voice timbre guidance only; no timeline or transcript copy).\n\ndetailed_description: [Shot 1] In a static medium shot of a shared room, <Subject 1> stands on the left and <Subject 2> stands on the right. The camera remains stationary. <Subject 1> looks toward <Subject 2> and says: <d>[English] Are you ready?</d> Using the voice timbre of <Subject 4>, <Subject 1> delivers the line with a neutral, direct tone. After <Subject 1> finishes speaking, <Subject 2> turns slightly toward <Subject 1> and replies: <d>[English] Let us go.</d> <Subject 2> maintains a steady, affirmative delivery. The two subjects remain in their positions throughout the clip, with no background movement or additional visual elements introduced.\n\noverall_soundscape: Quiet room ambience with minimal background noise; natural room tone supporting the dialogue.\n\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 9.48
+    }
+  ],
+  "skill_sha256": "50c4c36e9d881013dab9991b52ffa4c24f0ce984a9715b7679e538cb18f5d8fc",
+  "sampling_comparison": [
+    {
+      "case": "replacement",
+      "mode": "Ref2V",
+      "duration_seconds": 6,
+      "input": "Replace the performer in <Video 1> with the woman from <Picture 1>. Preserve the source performance, camera, timing, and background. No music.",
+      "reference_context": "<Picture 1> supplies the replacement identity. <Video 1> supplies motion and scene. Its audio is not enabled.",
+      "output": "subject_definitions:\n<Subject 1>: The woman from <Picture 1>.\n<Source Video>: The footage from <Video 1>, providing the motion, camera path, timing, and background.\nsummary: [video editing + reference generation] Replace the performer in <Source Video> with <Subject 1>, preserving the source performance, camera, timing, and background.\nretention_analysis:\n<Subject 1>: fully_preserved - retain the woman's identity from <Picture 1>.\n<Source Video>: partially_preserved - retain motion, camera, timing, and background; replace the performer's identity.\ndetailed_description:\n[Shot 1] The scene plays out exactly as in <Source Video>, with the same camera movements, timing, and background. The original performer is replaced by <Subject 1>. <Subject 1> performs the same actions, maintains the same spatial relationship to the environment, and follows the same motion trajectory as the original performer in <Source Video>. The lighting and background elements remain consistent with <Source Video>.\noverall_soundscape: Ambient sounds matching the environment in <Source Video>, excluding any original dialogue or music.\nnon_diegetic_music: N/A",
+      "presence_penalty": 0.0,
+      "validation": "passed",
+      "elapsed_seconds": 6.17
+    },
+    {
+      "case": "audio_roles",
+      "mode": "Ref2VA",
+      "duration_seconds": 10,
+      "input": "<Subject 1> from <Picture 1> says <d>[English] Are you ready?</d> Then <Subject 2> from <Picture 2> replies <d>[English] Let us go.</d> Use <Audio 1> only for Subject 1 voice timbre. Keep them in the same room in a single scene. No additional speech or music.",
+      "reference_context": "<Picture 1>: woman on the left. <Picture 2>: man on the right. <Audio 1>: voice-timbre reference, not copied audio or timeline; do not import its transcript.",
+      "output": "subject_definitions:\n<Subject 1>: The woman from <Picture 1>.\n<Subject 2>: The man from <Picture 2>.\n<Audio 1>: Voice-timbre guidance for <Subject 1> (S1).\nsummary: [reference generation + audio reference] <Subject 1> and <Subject 2> exchange two lines of dialogue in a shared room, with <Audio 1> guiding only <Subject 1>'s vocal timbre.\nretention_analysis:\n<Subject 1>: fully_preserved - retain the woman's identity.\n<Subject 2>: fully_preserved - retain the man's identity.\n<Audio 1>: reference - voice timbre only for <Subject 1>; no transcript or timing is copied.\ndetailed_description: [Shot 1] <Subject 1> and <Subject 2> stand in the same room, facing each other. <Subject 1> (S1) says: <d>[English] Are you ready?</d> She then closes her lips. <Subject 2> (S2) replies: <d>[English] Let us go.</d> He closes his lips afterward.\noverall_soundscape: Quiet indoor room tone.\nnon_diegetic_music: N/A",
+      "presence_penalty": 0.0,
+      "validation": "passed",
+      "elapsed_seconds": 5.8
+    },
+    {
+      "case": "replacement",
+      "mode": "Ref2V",
+      "duration_seconds": 6,
+      "input": "Replace the performer in <Video 1> with the woman from <Picture 1>. Preserve the source performance, camera, timing, and background. No music.",
+      "reference_context": "<Picture 1> supplies the replacement identity. <Video 1> supplies motion and scene. Its audio is not enabled.",
+      "output": "subject_definitions:\n<Subject 1>: The woman from <Picture 1>.\n<Video 1>: Source footage providing motion, scene, camera movement, and timing.\nsummary: [video editing + reference generation] Replace the performer in <Video 1> with <Subject 1>, preserving the source performance, camera, timing, and background.\nretention_analysis:\n<Subject 1>: fully_preserved - retain the woman's identity from <Picture 1>.\n<Video 1>: partially_preserved - retain motion, scene, camera, timing, and background; replace the performer's identity.\ndetailed_description: [Shot 1] The scene follows the visual action, camera movement, and timing of <Video 1>, with the original performer replaced by <Subject 1>. <Subject 1> performs the same actions in the same location with the same body mechanics and timing as the source footage. The background, lighting, and camera path remain identical to <Video 1>.\noverall_soundscape: Ambient sounds from the source environment in <Video 1>, excluding any dialogue or vocal performance of the original performer.\nnon_diegetic_music: N/A",
+      "presence_penalty": 1.5,
+      "validation": "passed",
+      "elapsed_seconds": 5.42
+    },
+    {
+      "case": "audio_roles",
+      "mode": "Ref2VA",
+      "duration_seconds": 10,
+      "input": "<Subject 1> from <Picture 1> says <d>[English] Are you ready?</d> Then <Subject 2> from <Picture 2> replies <d>[English] Let us go.</d> Use <Audio 1> only for Subject 1 voice timbre. Keep them in the same room in a single scene. No additional speech or music.",
+      "reference_context": "<Picture 1>: woman on the left. <Picture 2>: man on the right. <Audio 1>: voice-timbre reference, not copied audio or timeline; do not import its transcript.",
+      "output": "subject_definitions:\n<Subject 1>: The woman from <Picture 1>.\n<Subject 2>: The man from <Picture 2>.\n<Audio 1>: Voice-timbre guidance for <Subject 1> (S1).\nsummary: [reference generation + audio reference] <Subject 1> and <Subject 2> exchange two lines of dialogue in a shared room, with <Subject 1>'s voice guided by the timbre of <Audio 1>.\nretention_analysis:\n<Subject 1>: fully_preserved - retain the woman's identity.\n<Subject 2>: fully_preserved - retain the man's identity.\n<Audio 1>: reference - voice timbre only; no source transcript or timing is copied.\ndetailed_description: [Shot 1] <Subject 1> (S1) says: <d>[English] Are you ready?</d> She closes her lips afterward. Then <Subject 2> (S2) replies: <d>[English] Let us go.</d> He closes his lips afterward. Both remain in the same room throughout the single scene.\noverall_soundscape: Quiet room tone.\nnon_diegetic_music: N/A",
+      "presence_penalty": 1.5,
+      "validation": "passed",
+      "elapsed_seconds": 5.64
+    }
+  ],
+  "final_node_checks": [
+    {
+      "case": "simple_i2v",
+      "mode": "I2V",
+      "duration_seconds": 5,
+      "input": "The woman in the starting image slowly turns her head toward the camera. Keep the camera locked off. No music.",
+      "reference_context": "",
+      "output": "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\nintegrated_multimodal_description: [Shot 1] The woman slowly turns her head toward the camera, maintaining a steady gaze as she completes the turn. The camera remains static, locked off with no movement, zoom, or panning throughout the duration. Her body position and background remain consistent with the starting frame.\noverall_soundscape: N/A\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 3.24
+    },
+    {
+      "case": "contact",
+      "mode": "T2V",
+      "duration_seconds": 5,
+      "input": "Close-up of a hand inserting a coin into an arcade machine slot. The coin must enter fully before the hand withdraws. No cuts. No music.",
+      "reference_context": "",
+      "output": "integrated_multimodal_description: [Shot 1] Close-up view of a metallic coin being inserted vertically into the narrow slot of a vintage arcade machine. The hand guides the coin firmly downward until it disappears completely through the slot opening, then the fingers release and withdraw smoothly from the frame. Static camera angle focused on the interaction point.\noverall_soundscape: Sharp metallic click as the coin enters the mechanism, followed by subtle friction sounds during insertion and withdrawal.\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 2.5
+    },
+    {
+      "case": "orbit",
+      "mode": "I2V",
+      "duration_seconds": 5,
+      "input": "The truck stays parked. The camera travels halfway around it to reveal its rear. Keep the truck stationary. No cuts or music.",
+      "reference_context": "",
+      "output": "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\nintegrated_multimodal_description: [Shot 1] The camera moves in a smooth arc around the parked truck, traveling halfway around its side to reveal the rear. The truck remains completely stationary throughout the movement.\noverall_soundscape: Ambient outdoor silence with subtle wind noise.\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 2.51
+    },
+    {
+      "case": "same_scene_cuts",
+      "mode": "T2V",
+      "duration_seconds": 8,
+      "input": "One continuous scene. [Shot 1] A woman walks down an alley. At 00:02.000, cut to a close-up of her face. At 00:05.000, cut to a front full-body view. She keeps walking in the same alley. No music.",
+      "reference_context": "",
+      "output": "integrated_multimodal_description: [Shot 1] A woman walks down an alley. At 00:02.000, cut to a close-up of her face as she continues walking. At 00:05.000, cut to a front full-body view in the same alley. She keeps walking forward.\noverall_soundscape: Ambient city alley sounds and footsteps on pavement.\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 2.41
+    },
+    {
+      "case": "endpoints",
+      "mode": "FL2V",
+      "duration_seconds": 8,
+      "input": "The first frame shows a woman holding a closed umbrella; the last frame shows her holding it open overhead. Connect the frames with one continuous opening action. Keep the camera stationary. No music.",
+      "reference_context": "",
+      "output": "How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the 8.00-second mark of the target video.\n\nintegrated_multimodal_description: [Shot 1] A woman stands stationary, holding a closed umbrella in her hand. She begins to open the umbrella, moving it upward and outward until it is fully open overhead. The camera remains fixed in a stationary position throughout the action, capturing the continuous motion from the initial closed state to the final open position.\noverall_soundscape: Ambient silence with subtle sound of fabric unfolding and mechanical clicking as the umbrella opens.\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 3.88
+    },
+    {
+      "case": "replacement",
+      "mode": "Ref2V",
+      "duration_seconds": 6,
+      "input": "Replace the performer in <Video 1> with the woman from <Picture 1>. Preserve the source performance, camera, timing, and background. No music.",
+      "reference_context": "<Picture 1> supplies the replacement identity. <Video 1> supplies motion and scene. Its audio is not enabled.",
+      "output": "subject_definitions:\n<Subject 1>: The woman from <Picture 1>.\n<Video 1>: Source footage providing motion, scene, camera movement, and timing.\nsummary: [video editing + reference generation] Replace the performer in <Video 1> with <Subject 1>, preserving the source performance, camera, timing, and background.\nretention_analysis:\n<Subject 1>: fully_preserved - retain the woman's identity from <Picture 1>.\n<Video 1>: partially_preserved - retain motion, scene, camera, timing, and background; replace the performer's identity.\ndetailed_description: [Shot 1] The scene follows the visual performance, camera movement, timing, and background of <Video 1>. The original performer is replaced by <Subject 1>. <Subject 1> executes the same movements and actions as the source performer. The camera path and framing remain consistent with the source footage.\noverall_soundscape: Ambient sounds implied by the source scene in <Video 1>, without dialogue or music.\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 5.36
+    },
+    {
+      "case": "literal_dialogue",
+      "mode": "T2V",
+      "duration_seconds": 6,
+      "input": "One scene: a woman (S1) beside a sign reading \"营业中\" says <d>[French] Attends… ne pars pas !</d> After speaking, she closes her lips. Keep the camera static. No music.",
+      "reference_context": "",
+      "output": "integrated_multimodal_description: [Shot 1] A woman (S1) stands beside a sign reading \"营业中\". She says: <d>[French] Attends… ne pars pas !</d> After speaking, she closes her lips. The camera remains static.\noverall_soundscape: Ambience of the location.\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 2.02
+    },
+    {
+      "case": "audio_roles",
+      "mode": "Ref2VA",
+      "duration_seconds": 10,
+      "input": "<Subject 1> from <Picture 1> says <d>[English] Are you ready?</d> Then <Subject 2> from <Picture 2> replies <d>[English] Let us go.</d> Use <Audio 1> only for Subject 1 voice timbre. Keep them in the same room in a single scene. No additional speech or music.",
+      "reference_context": "<Picture 1>: woman on the left. <Picture 2>: man on the right. <Audio 1>: voice-timbre reference, not copied audio or timeline; do not import its transcript.",
+      "output": "subject_definitions:\n<Subject 1>: The woman from <Picture 1>.\n<Subject 2>: The man from <Picture 2>.\n<Audio 1>: Voice-timbre guidance for <Subject 1> (S1).\nsummary: [reference generation + audio reference] <Subject 1> and <Subject 2> exchange two lines of dialogue in a shared room, with <Subject 1>'s voice guided by the timbre of <Audio 1>.\nretention_analysis:\n<Subject 1>: fully_preserved - retain the woman's identity.\n<Subject 2>: fully_preserved - retain the man's identity.\n<Audio 1>: reference - voice timbre only; no source transcript or timing is copied.\ndetailed_description: [Shot 1] <Subject 1> (S1) says: <d>[English] Are you ready?</d> She closes her lips afterward. Then <Subject 2> (S2) replies: <d>[English] Let us go.</d> He closes his lips afterward. They remain in the same room throughout the single scene.\noverall_soundscape: Quiet room tone.\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 6.05
+    },
+    {
+      "case": "auto_defaults",
+      "mode": "Auto",
+      "duration_seconds": 0,
+      "input": "A paper boat drifts across a quiet pond. One continuous scene. No music.",
+      "reference_context": "",
+      "output": "integrated_multimodal_description: [Shot 1] A small, white paper boat drifts slowly across the surface of a calm, dark green pond. The water is still, with only faint ripples trailing behind the boat as it moves from left to right. Soft, natural daylight reflects off the water's surface. The camera remains stationary in a medium shot, keeping the paper boat centered in the frame as it traverses the pond.\noverall_soundscape: Quiet ambient nature sounds, including subtle water lapping and distant birdsong.\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 3.25
+    },
+    {
+      "case": "semantic_over_strict",
+      "mode": "T2V",
+      "duration_seconds": 5,
+      "task": "Precise Action",
+      "action_detail": "Semantic",
+      "enhancement": "Strict",
+      "input": "A woman picks up a drinking glass. Keep the action description semantic without finger choreography. No music.",
+      "reference_context": "",
+      "output": "integrated_multimodal_description: [Shot 1] A woman reaches for and lifts a drinking glass from the surface in front of her, holding it steady at chest height. The camera remains static, framing her upper body and the glass clearly against a neutral background. Her motion is smooth and deliberate, with no additional props or characters visible.\n\noverall_soundscape: Soft ambient room tone; subtle clink as the glass leaves the surface; faint fabric rustle from her sleeve.\n\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 2.64
+    },
+    {
+      "case": "endpoints_unspecified",
+      "mode": "FL2V",
+      "duration_seconds": 0,
+      "input": "Connect the first frame of a closed umbrella to the last frame of the umbrella fully open. One continuous scene. No music.",
+      "reference_context": "",
+      "output": "The target video begins from Picture 1 and reaches Picture 2 at the end of the final scene.\n\nintegrated_multimodal_description: [Shot 1] A closed umbrella is held in a person's hand, transitioning smoothly into a fully open state as the canopy unfurls and the ribs extend outward. The motion is continuous and fluid, showing the mechanical expansion of the umbrella from its compact form to its full protective shape. The background remains consistent throughout the transformation, focusing attention on the changing geometry of the umbrella itself.\n\noverall_soundscape: Subtle mechanical clicking sounds as the umbrella's locking mechanism engages during opening, accompanied by a soft rustling of fabric as the canopy expands.\n\nnon_diegetic_music: N/A",
+      "validation": "passed",
+      "elapsed_seconds": 3.55
+    }
+  ],
+  "final_skill_sha256": "50c4c36e9d881013dab9991b52ffa4c24f0ce984a9715b7679e538cb18f5d8fc",
+  "sampling_decision": "Use Qwen official non-thinking instruct defaults including presence_penalty=1.5. Both trial penalties passed literal/asset checks; 1.5 retained the source Video alias directly in the inspected replacement case. This is a small smoke comparison, not an optimality claim.",
+  "final_sampling": {
+    "max_tokens": 2048,
+    "temperature": 0.7,
+    "top_p": 0.8,
+    "top_k": 20,
+    "min_p": 0.0,
+    "repeat_penalty": 1.0,
+    "presence_penalty": 1.5,
+    "frequency_penalty": 0.0,
+    "stream": true,
+    "reasoning_effort": "none",
+    "seed": 0,
+    "chat_template_kwargs": {
+      "enable_thinking": false
+    }
+  },
+  "verified_at_utc": "2026-09-07T19:09:54.434767+00:00",
+  "automated_tests": {
+    "passed": 101,
+    "full_package_registration_nodes": 21,
+    "diff_check": "passed"
+  },
+  "manual_review": {
+    "scope": "One seed per final case on the installed Huihui Q4_K derivative; text-rewrite checks only. Existing model handoff was bypassed during standalone node checks; real local inference, template tokenization, node assembly, and output validation ran.",
+    "confirmed": [
+      "Two same-scene cuts stayed in one Shot 1 block.",
+      "French dialogue and Chinese visible text were preserved.",
+      "Known FL endpoint used 8.00 seconds; unspecified duration used semantic end alignment.",
+      "Reference voice guidance remained separate from transcript/timeline copying in the final audio case.",
+      "Semantic + Strict avoided finger choreography."
+    ],
+    "limitations": [
+      "Soft creative preservation remains imperfect: sparse T2V outputs can add descriptive attributes or framing not explicitly requested.",
+      "The final audio example retained identities and dialogue but did not restate the supplied left/right positions in the scene description.",
+      "Structural validation is not a full semantic verifier. No H3 video-quality comparison was performed."
+    ]
+  }
+}

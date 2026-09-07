@@ -493,6 +493,46 @@ class LlamaServerManager:
             return False
 
     @staticmethod
+    def validate_text_context(handle: ServerHandle, payload: dict, context_size: int, timeout_s: float) -> None:
+        """Count the model's rendered chat tokens before reserving completion space."""
+        if any(not isinstance(message["content"], str) for message in payload["messages"]):
+            raise ValueError("Text context validation requires text-only messages")
+        body = payload
+        for endpoint in ("/apply-template", "/tokenize"):
+            _check_interrupted()
+            request = urllib.request.Request(
+                handle.base_url + endpoint, data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=min(timeout_s, 30.0)) as response:
+                    result = json.load(response)
+            except urllib.error.HTTPError as exc:
+                raise RequestRejectedError(f"Local AI context check failed at {endpoint} (HTTP {exc.code}). Update llama-server.") from exc
+            except (OSError, urllib.error.URLError, TimeoutError) as exc:
+                raise ServerFailureError(f"Local AI context check failed: {exc}") from exc
+            except (ValueError, TypeError) as exc:
+                raise ServerFailureError("Local AI context check returned invalid JSON") from exc
+            if not isinstance(result, dict):
+                raise ServerFailureError("Local AI context check returned a non-object response")
+            if endpoint == "/apply-template":
+                if not isinstance(result.get("prompt"), str):
+                    raise ServerFailureError("Local AI chat template response has no prompt")
+                body = {"content": result["prompt"], "add_special": False, "parse_special": True}
+        tokens = result.get("tokens")
+        if not isinstance(tokens, list):
+            raise ServerFailureError("Local AI tokenizer response has no token list")
+        slot_context = handle.props.get("default_generation_settings", {}).get("n_ctx")
+        if isinstance(slot_context, int) and slot_context > 0:
+            context_size = min(context_size, slot_context)
+        required = len(tokens) + int(payload["max_tokens"])
+        if required > context_size:
+            raise RequestRejectedError(
+                f"Local AI needs {len(tokens)} input + {payload['max_tokens']} output tokens, "
+                f"but context_size is {context_size}. Increase context_size or shorten the input/output budget."
+            )
+
+    @staticmethod
     def _stream_worker(request, timeout_s: float, events: queue.Queue, state: dict) -> None:
         try:
             response = urllib.request.urlopen(request, timeout=timeout_s)
@@ -571,6 +611,11 @@ class LlamaServerManager:
                 if not isinstance(choices, list) or not choices:
                     continue
                 item = choices[0]
+                if item.get("finish_reason") == "length":
+                    raise RequestRejectedError(
+                        "Local AI output was truncated by the token limit. Increase max_tokens "
+                        "and, if needed, context_size, or shorten the request."
+                    )
                 message = item.get("delta") or item.get("message") or {}
                 content = message.get("content")
                 if isinstance(content, str):
