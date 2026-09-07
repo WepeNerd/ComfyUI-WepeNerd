@@ -97,6 +97,16 @@ class MaskedLoraTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unsupported adapter"):
             validate_adapter(SimpleNamespace(name="loha"), torch.nn.Linear(3, 3), "layer")
 
+    def test_wrapper_rejects_multiframe_inputs_and_references(self):
+        region = RegionContext(torch.ones(1, 1, 2, 2))
+        executor = SimpleNamespace(class_obj=SimpleNamespace(patch=2, default_ref_method="index"))
+        with self.assertRaisesRegex(ValueError, "still-image"):
+            region(executor, torch.zeros(1, 16, 2, 4, 4), torch.ones(1), torch.zeros(1, 3, 64))
+        with self.assertRaisesRegex(ValueError, "reference token layout"):
+            region(executor, torch.zeros(1, 16, 1, 4, 4), torch.ones(1), torch.zeros(1, 3, 64),
+                   ref_latents=[torch.zeros(1, 16, 2, 4, 4)])
+        self.assertIsNone(region.current.get())
+
 
 if __name__ == "__main__":
     unittest.main()

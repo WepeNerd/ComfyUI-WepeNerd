@@ -28,6 +28,14 @@ function readImage(src) {
         image.src = src;
     });
 }
+function readReference(reference) {
+    if (!reference) return Promise.resolve(null);
+    return readImage(reference.png || api.apiURL(`/view?${new URLSearchParams({
+        filename: reference.asset.name ?? reference.asset.filename,
+        subfolder: reference.asset.subfolder,
+        type: reference.asset.type,
+    })}`));
+}
 export function setupMaskedLora(node) {
     const data = node.widgets.find(w => w.name === "mask_data");
     Object.assign(data, { type: "wn_hidden", computeSize: () => [0, -4], draw() {}, mouse: () => false });
@@ -184,7 +192,7 @@ export function setupMaskedLora(node) {
     async function restore(value) {
         busy = true; refresh();
         try {
-            const [bitmap, ref] = await Promise.all([readImage(value.png), value.reference ? readImage(value.reference.png) : null]);
+            const [bitmap, ref] = await Promise.all([readImage(value.png), readReference(value.reference)]);
             mask.width = value.width; mask.height = value.height;
             mctx.drawImage(bitmap, 0, 0); reference = ref; saved.reference = value.reference;
             serializeMask();
@@ -305,14 +313,13 @@ export function setupMaskedLora(node) {
             const bitmap = await createImageBitmap(blob, { imageOrientation: "from-image" });
             const raster = element("canvas"); raster.width = bitmap.width; raster.height = bitmap.height;
             raster.getContext("2d").drawImage(bitmap, 0, 0); bitmap.close();
-            const png = raster.toDataURL("image/png");
-            const image = await readImage(png);
             const upload = await new Promise(resolve => raster.toBlob(resolve, "image/png"));
             const form = new FormData(); form.append("image", upload, `mask-reference-${crypto.randomUUID()}.png`); form.append("subfolder", "wepenerd_masked_lora"); form.append("type", "input");
             const response = await api.fetchApi("/upload/image", { method: "POST", body: form });
             if (!response.ok) throw new Error("Could not save reference image; existing painting was kept.");
             const asset = await response.json();
-            await adopt(image, { png, asset, source: sourceName });
+            const reference = { asset, source: sourceName };
+            await adopt(await readReference(reference), reference);
         } catch (error) { message(error.message); }
         finally { busy = false; refresh(); }
     }
@@ -400,7 +407,16 @@ export function setupMaskedLora(node) {
             const maskData = data.value ? JSON.parse(data.value) : null;
             mask.width = maskData?.width || saved.width || 1024; mask.height = maskData?.height || saved.height || 1024;
             if (maskData) mctx.drawImage(await readImage(maskData.png), 0, 0);
-            reference = saved.reference ? await readImage(saved.reference.png) : null;
+            reference = await readReference(saved.reference);
+            if (saved.reference?.png && saved.reference.asset) {
+                const { png, ...stored } = saved.reference;
+                // Migrate embedded previews only after verifying the uploaded copy exists.
+                try {
+                    reference = await readReference(stored);
+                    saved.reference = stored;
+                    remember();
+                } catch { /* Keep the embedded image if the workflow moved to another server. */ }
+            }
             history = []; refresh(); fit();
         } catch (error) { message(`Cannot restore mask: ${error.message}`); }
         finally { restoring = false; }

@@ -76,14 +76,17 @@ class RegionContext:
     def __call__(self, executor, x, timesteps, context, attention_mask=None,
                  ref_latents=None, transformer_options=None, **kwargs):
         model = executor.class_obj
-        if x.ndim != 4:
+        # Native Krea2 also receives still images as [B, C, 1, H, W].
+        if not (x.ndim == 4 or (x.ndim == 5 and x.shape[2] == 1)):
             raise ValueError("Load LoRA Masked supports native Krea2 still-image sampling only.")
         patch = model.patch
         h, w = ((x.shape[-2] + patch - 1) // patch, (x.shape[-1] + patch - 1) // patch)
         method = kwargs.get("ref_latents_method", model.default_ref_method)
         refs = 0
         if ref_latents is not None and len(ref_latents) and method is not None:
-            if method not in ("index", "index_timestep_zero") or any(r.ndim != 4 for r in ref_latents):
+            if method not in ("index", "index_timestep_zero") or any(
+                not (r.ndim == 4 or (r.ndim == 5 and r.shape[2] == 1)) for r in ref_latents
+            ):
                 raise ValueError("Load LoRA Masked: unsupported Krea2 reference token layout.")
             refs = sum(((r.shape[-2] + patch - 1) // patch) * ((r.shape[-1] + patch - 1) // patch) for r in ref_latents)
         if (transformer_options or {}).get("patches", {}).get("post_input"):

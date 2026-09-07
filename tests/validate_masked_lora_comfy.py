@@ -70,6 +70,13 @@ def validate_native():
                 options = {"wrappers": model.wrappers}
                 result = base.diffusion_model(x, time, context, transformer_options=options)
                 assert result.shape == x.shape and torch.isfinite(result).all()
+                still = base.diffusion_model(x.unsqueeze(2), time, context, transformer_options=options)
+                torch.testing.assert_close(still, result.unsqueeze(2))
+                reference = torch.randn(1, 16, 2, 4)
+                for method in ("index", "index_timestep_zero"):
+                    flat = base.diffusion_model(x, time, context, ref_latents=[reference], ref_latents_method=method, transformer_options=options)
+                    still = base.diffusion_model(x.unsqueeze(2), time, context, ref_latents=[reference.unsqueeze(2)], ref_latents_method=method, transformer_options=options)
+                    torch.testing.assert_close(still, flat.unsqueeze(2))
                 result = base.diffusion_model(x, time, context, ref_latents=[torch.randn(1, 16, 2, 4)], ref_latents_method="index_timestep_zero", transformer_options=options)
                 assert result.shape == x.shape and torch.isfinite(result).all()
             finally:
