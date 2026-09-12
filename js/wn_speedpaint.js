@@ -17,8 +17,8 @@ style.textContent = `
 .wn-speedpaint button:disabled{opacity:.4;cursor:default}.wn-speedpaint button[aria-pressed=true]{color:#f2c0db;border-color:#bb7f9d;background:#41313b}
 .wn-speedpaint button.sp-icon{width:28px;padding:5px;display:grid;place-items:center;flex:none}.wn-speedpaint svg{width:16px;height:16px;display:block}
 .wn-speedpaint input[type=color]{width:28px;height:27px;padding:2px;cursor:pointer;flex:none}.wn-speedpaint input[type=range]{flex:1;min-width:38px;width:70px;margin:0;accent-color:#d69ab9;cursor:pointer}
-.wn-speedpaint input[type=number]{width:49px;height:27px;padding:3px}.wn-speedpaint input.sp-hex{width:68px;height:27px;padding:3px;font-size:11px}
-.wn-speedpaint .sp-size{font-variant-numeric:tabular-nums;font-size:11px;min-width:36px;text-align:right;white-space:nowrap}
+.wn-speedpaint input.sp-hex{width:68px;height:27px;padding:3px;font-size:11px}
+.wn-speedpaint .sp-size,.wn-speedpaint .sp-opacity{font-variant-numeric:tabular-nums;font-size:11px;min-width:36px;text-align:right;white-space:nowrap}
 .wn-speedpaint .sp-status{font-size:10px;color:var(--descrip-text,#aaa);margin-right:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .wn-speedpaint .sp-status.sp-error{color:#ff9b99}.wn-speedpaint .sp-stage{flex:1;min-height:160px;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#191a1d;border:1px solid var(--border-color,#414147);border-radius:3px}
 .wn-speedpaint .sp-picture{position:relative;flex:none}.wn-speedpaint canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
@@ -124,8 +124,8 @@ export function setupSpeedpaint(node) {
     picker.append(swatch, hex);
     const size = element("input"); size.type = "range"; size.min = "1"; size.max = "512"; size.step = "1"; size.setAttribute("aria-label", "Brush size"); size.title = "Brush size in image pixels · [ and ]";
     const sizeLabel = element("span", "sp-size");
-    const opacity = element("input"); opacity.type = "number"; opacity.min = "1"; opacity.max = "100"; opacity.step = "1"; opacity.title = "Stroke opacity (%)"; opacity.setAttribute("aria-label", "Opacity percent");
-    const percent = element("span"); percent.textContent = "%";
+    const opacity = element("input"); opacity.type = "range"; opacity.min = "1"; opacity.max = "100"; opacity.step = "1"; opacity.title = "Stroke opacity (%)"; opacity.setAttribute("aria-label", "Opacity percent");
+    const percent = element("span", "sp-opacity");
     const pressure = button("Pen pressure controls size", "m15 3 6 6M4 20l4-1 12-12a2.1 2.1 0 0 0-3-3L5 16l-1 4Z");
     const undo = button("Undo · Ctrl/Cmd+Z", "M9 5 4 10l5 5M4 10h10a6 6 0 0 1 0 12");
     const divider = element("span", "sp-divider");
@@ -146,6 +146,7 @@ export function setupSpeedpaint(node) {
         background.value = settings.background; swatch.value = hex.value = settings.colour;
         colour.style.background = settings.colour;
         size.value = settings.size; sizeLabel.textContent = `${settings.size}px`; opacity.value = settings.opacity;
+        percent.textContent = `${settings.opacity}%`;
         round.setAttribute("aria-pressed", String(settings.shape === "round")); square.setAttribute("aria-pressed", String(settings.shape === "square"));
         pressure.setAttribute("aria-pressed", String(settings.pressure));
         fresh.disabled = load.disabled = undo.disabled = busy > 0;
@@ -417,7 +418,7 @@ export function setupSpeedpaint(node) {
     swatch.oninput = () => { settings.colour = swatch.value; refresh(); };
     hex.onchange = () => { if (/^#[0-9a-f]{6}$/i.test(hex.value)) settings.colour = hex.value; refresh(); };
     size.oninput = () => { settings.size = Number(size.value); refresh(); };
-    opacity.onchange = () => { settings.opacity = Math.max(1, Math.min(100, Number(opacity.value) || 100)); refresh(); };
+    opacity.oninput = () => { settings.opacity = Number(opacity.value); refresh(); };
 
     function travel(redo = false) {
         if (busy) return;
