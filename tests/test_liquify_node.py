@@ -8,6 +8,8 @@ import numpy as np
 from PIL import Image, ImageOps
 import torch
 
+import comfy.cli_args
+comfy.cli_args.args.cpu = True
 import liquify_node as liquify
 
 
