@@ -77,6 +77,28 @@ function checkSize(width, height) {
     if (![width, height].every(v => Number.isInteger(v) && v >= 64 && v <= 4096)) throw new Error("Use integer dimensions from 64 to 4096 pixels.");
 }
 
+function inputDimension(node, name, seen = new Set()) {
+    if (seen.has(node)) return undefined;
+    seen.add(node);
+    const slot = node.inputs?.findIndex(input => input.name === name) ?? -1;
+    if (slot < 0 || node.inputs[slot].link == null) {
+        const value = node.widgets?.find(widget => widget.name === name)?.value;
+        return value == null ? undefined : Number(value);
+    }
+    const link = node.getInputLink(slot);
+    const source = node.getInputNode(slot);
+    if (!link || !source) return undefined;
+    if (source.type === "Reroute") return inputDimension(source, source.inputs[0].name, seen);
+    if (source.type === "WN_DragResolution" && (link.origin_slot === 0 || link.origin_slot === 1)) {
+        return inputDimension(source, link.origin_slot === 0 ? "width" : "height", seen);
+    }
+    if (source.type === "PrimitiveNode" && link.origin_slot === 0) {
+        return Number(source.widgets?.find(widget => widget.name === "value")?.value);
+    }
+    // Computed backend outputs retain their last execution preview dimensions.
+    return undefined;
+}
+
 export function setupSpeedpaint(node) {
     if (node._wnSpeedpaintEditor) return node._wnSpeedpaintEditor;
     const data = node.widgets.find(w => w.name === "document");
@@ -122,7 +144,7 @@ export function setupSpeedpaint(node) {
     const swatch = element("input"); swatch.type = "color"; swatch.setAttribute("aria-label", "Brush colour picker");
     const hex = element("input", "sp-hex"); hex.type = "text"; hex.maxLength = 7; hex.setAttribute("aria-label", "Brush hex colour");
     picker.append(swatch, hex);
-    const size = element("input"); size.type = "range"; size.min = "1"; size.max = "512"; size.step = "1"; size.setAttribute("aria-label", "Brush size"); size.title = "Brush size in image pixels · [ and ]";
+    const size = element("input"); size.type = "range"; size.min = "0"; size.max = "9"; size.step = "any"; size.setAttribute("aria-label", "Brush size"); size.title = "Brush size in image pixels · Fine control at small sizes · [ and ]";
     const sizeLabel = element("span", "sp-size");
     const opacity = element("input"); opacity.type = "range"; opacity.min = "1"; opacity.max = "100"; opacity.step = "1"; opacity.title = "Stroke opacity (%)"; opacity.setAttribute("aria-label", "Opacity percent");
     const percent = element("span", "sp-opacity");
@@ -145,7 +167,7 @@ export function setupSpeedpaint(node) {
         if (removed) return;
         background.value = settings.background; swatch.value = hex.value = settings.colour;
         colour.style.background = settings.colour;
-        size.value = settings.size; sizeLabel.textContent = `${settings.size}px`; opacity.value = settings.opacity;
+        size.value = Math.log2(settings.size); sizeLabel.textContent = `${settings.size}px`; size.setAttribute("aria-valuetext", `${settings.size} pixels`); opacity.value = settings.opacity;
         percent.textContent = `${settings.opacity}%`;
         round.setAttribute("aria-pressed", String(settings.shape === "round")); square.setAttribute("aria-pressed", String(settings.shape === "square"));
         pressure.setAttribute("aria-pressed", String(settings.pressure));
@@ -265,7 +287,7 @@ export function setupSpeedpaint(node) {
         pushHistory({ kind: "document", before: clone(before), after: clone(next) }); sync(); track();
     }
     function editingSize() {
-        const result = dimensions.map((widget, i) => linked(i) ? canvas[i ? "height" : "width"] : Number(widget.value));
+        const result = dimensions.map((widget, i) => inputDimension(node, widget.name) ?? canvas[i ? "height" : "width"]);
         checkSize(...result); return result;
     }
     function resize() {
@@ -417,7 +439,13 @@ export function setupSpeedpaint(node) {
     colour.onclick = () => { picker.hidden = !picker.hidden; };
     swatch.oninput = () => { settings.colour = swatch.value; refresh(); };
     hex.onchange = () => { if (/^#[0-9a-f]{6}$/i.test(hex.value)) settings.colour = hex.value; refresh(); };
-    size.oninput = () => { settings.size = Number(size.value); refresh(); };
+    size.oninput = () => { settings.size = Math.round(2 ** Number(size.value)); refresh(); };
+    size.onkeydown = event => {
+        if (!["ArrowLeft", "ArrowDown", "ArrowRight", "ArrowUp"].includes(event.key)) return;
+        event.preventDefault(); event.stopPropagation();
+        const delta = event.key === "ArrowRight" || event.key === "ArrowUp" ? 1 : -1;
+        settings.size = Math.max(1, Math.min(512, settings.size + delta)); refresh();
+    };
     opacity.oninput = () => { settings.opacity = Number(opacity.value); refresh(); };
 
     function travel(redo = false) {

@@ -105,14 +105,17 @@ and paint over it. Width and height accept INT connections and local values
 crop at that exact size. Shift-drag before painting to reposition the crop.
 
 The compact toolbar has round/square brushes, colour with a hex picker, a live
-pixel-size slider, stroke opacity, pen pressure to size, and undo. Alt-click samples
-colour; `[` / `]` adjusts size; Ctrl/Cmd+Z undoes a stroke or canvas operation;
+pixel-size slider, stroke opacity, pen pressure to size, and undo. The size slider
+gives small brushes more travel; its arrow keys and `[` / `]` adjust by one pixel.
+Alt-click samples colour; Ctrl/Cmd+Z undoes a stroke or canvas operation;
 Ctrl/Cmd+Shift+Z redoes it. Mouse strokes use full brush size. Resize the node to
 enlarge its canvas display without changing image resolution.
 
-Resizing painted artwork transforms the whole composition with Lanczos. Linked
-dimensions resolve during execution; the returned preview retains the committed
-source until you paint on it. Undo never changes an upstream resolution node.
+Resizing painted artwork transforms the whole composition with Lanczos. **New**
+and image import read current dimensions connected from Drag Resolution or INT
+primitives, including through reroutes. Other computed dimensions resolve during
+execution; the returned preview retains the committed source until you paint on
+it. Undo never changes an upstream resolution node.
 Connect `image` to **VAE Encode**, then use your existing sampler workflow.
 
 Paintings and original imports use immutable assets in
