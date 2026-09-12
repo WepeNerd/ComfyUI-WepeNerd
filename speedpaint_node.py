@@ -167,10 +167,20 @@ def import_document(raw, width, height, background):
     return prepare_document(document, width, height)
 
 
-def commit_document(document):
+def commit_document(document, raw=None):
     document = parse_document(document)
     validate_size(document["width"], document["height"])
-    image = read_composition(document)
+    if raw is None:
+        image = read_composition(document)
+    else:
+        if len(raw) > MAX_BYTES:
+            raise ValueError("Speedpaint image exceeds 64 MiB.")
+        with Image.open(io.BytesIO(raw)) as opened:
+            if opened.format != "PNG":
+                raise ValueError("Speedpaint composition must be PNG.")
+            if opened.size != (document["width"], document["height"]):
+                raise ValueError("Speedpaint composition does not match its editing dimensions.")
+        image = decode_image(raw, colour_manage=False)
     if image.size != (document["width"], document["height"]):
         raise ValueError("Speedpaint composition does not match its editing dimensions.")
     if image.getchannel("A").getextrema() != (255, 255):
@@ -206,7 +216,7 @@ def register_speedpaint_routes():
     from server import PromptServer
 
     instance = PromptServer.instance
-    if instance is None:
+    if instance is None or getattr(instance, "_wn_speedpaint_routes_registered", False):
         return
 
     @instance.routes.post("/wepenerd/speedpaint/{operation}")
@@ -215,7 +225,7 @@ def register_speedpaint_routes():
             operation = request.match_info["operation"]
             if request.content_length is not None and request.content_length > MAX_BYTES * 2:
                 raise ValueError("Speedpaint request is too large.")
-            if operation == "import":
+            if operation == "import" or (operation == "commit" and request.content_type.startswith("multipart/")):
                 reader = await request.multipart()
                 fields = {}
                 total = 0
@@ -224,15 +234,19 @@ def register_speedpaint_routes():
                     while chunk := await part.read_chunk():
                         data.extend(chunk)
                         total += len(chunk)
-                        if len(data) > MAX_BYTES or total > MAX_BYTES + 1024:
+                        if len(data) > MAX_BYTES or total > MAX_BYTES + 8192:
                             raise ValueError("Speedpaint upload exceeds 64 MiB.")
-                    if part.name not in {"image", "width", "height", "background"} or part.name in fields:
+                    allowed = {"image", "document"} if operation == "commit" else {"image", "width", "height", "background"}
+                    if part.name not in allowed or part.name in fields:
                         raise ValueError("Invalid Speedpaint upload field.")
-                    if part.name != "image" and len(data) > 32:
+                    if part.name != "image" and len(data) > (8192 if part.name == "document" else 32):
                         raise ValueError("Invalid Speedpaint upload field length.")
                     fields[part.name] = bytes(data) if part.name == "image" else data.decode("utf-8")
-                result = await asyncio.to_thread(import_document, fields["image"], int(fields["width"]),
-                                                 int(fields["height"]), fields["background"])
+                if operation == "commit":
+                    result = await asyncio.to_thread(commit_document, fields["document"], fields["image"])
+                else:
+                    result = await asyncio.to_thread(import_document, fields["image"], int(fields["width"]),
+                                                     int(fields["height"]), fields["background"])
             elif operation in {"prepare", "commit"}:
                 raw = bytearray()
                 async for chunk in request.content.iter_chunked(65536):
@@ -250,3 +264,5 @@ def register_speedpaint_routes():
         except (ValueError, KeyError, TypeError, OSError, UnidentifiedImageError,
                 Image.DecompressionBombError, ImageCms.PyCMSError) as error:
             return web.json_response({"error": f"Speedpaint: {error}"}, status=400)
+
+    instance._wn_speedpaint_routes_registered = True

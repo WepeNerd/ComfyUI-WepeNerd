@@ -1,533 +1,80 @@
 # ComfyUI-WepeNerd
 
-Custom node pack for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) by **WepeNerd**.
+Resolution tools, a compact sketch canvas, and spatial LoRA masks for ComfyUI.
+
+| Tool | What it does |
+|---|---|
+| **Drag Resolution** | Set dimensions visually with aspect-ratio and divisor controls |
+| **Resolution Suggest** | Calculate dimensions from a target size or scale factor |
+| **Resize Image Megapixels** | Resize an image batch to a target area without cropping |
+| **Speedpaint** | Sketch from a blank canvas or imported image and output an IMAGE |
+| **Slider** | Map a compact FLOAT control to your preferred strength range |
+| **Load LoRA Masked · Beta** | Apply spatial LoRA/LoKr regions to native Krea2 models |
 
 ## Installation
 
-### Via ComfyUI Manager
-Search for **WepeNerd** in ComfyUI Manager and click Install.
+From your ComfyUI `custom_nodes` directory:
 
-### Manual
-```bash
-cd ComfyUI/custom_nodes
+```sh
 git clone https://github.com/WepeNerd/ComfyUI-WepeNerd.git
 ```
-Install dependencies:
 
-```bash
-cd ComfyUI-WepeNerd
-pip install -r requirements.txt
+Using the Python environment that runs ComfyUI:
+
+```sh
+python -m pip install -r ComfyUI-WepeNerd/requirements.txt
 ```
 
-Restart ComfyUI. Nodes appear under the **WepeNerd/Utilities**,
-**WepeNerd/Resolution**, **WepeNerd/3D**, **WepeNerd/Image**,
-**WepeNerd/Video**, and **WepeNerd/Local AI** categories.
+Restart ComfyUI and refresh the browser. This pack uses Pillow and numpy, plus
+Torch supplied by ComfyUI. It does not install GPU wheels, models, or external runtimes.
 
----
+## Quick start
 
-## Nodes
+Open the [example workflow](examples/resolution-speedpaint.json). Resolution
+Suggest controls Speedpaint's width and height; paint and click **Queue** to
+preview the result. Connect Speedpaint to **VAE Encode** to use it in a generation
+workflow.
 
-### Resize Image Megapixels
+- **Speedpaint:** choose **New** for a blank background, or **Load** / drop an image.
+  Use round or square brushes, colour, size, opacity, and pressure-to-size controls.
+  Ctrl/Cmd+Z undoes; Shift+Ctrl/Cmd+Z redoes; Alt-click samples a colour.
+- **Resolution tools:** choose a divisor that matches your model's required
+  dimensions. Megapixel resizing retains the whole image, with small aspect changes
+  possible from rounding.
+- **Masked LoRA:** connect a native Krea2 MODEL, select a LoRA, and open **Edit mask**.
+  Empty masks have no effect. This node is specific to Krea2 and remains in Beta.
 
-**Category:** `WepeNerd/Image` · **Input/Output:** `IMAGE`.
+See the [node guide](docs/nodes.md) for controls, inputs, outputs, and limitations.
 
-Resize an image or batch to a target megapixel count (1 MP = 1,000,000 pixels).
-The node calculates the size at the original aspect ratio, then rounds each
-dimension to the nearest multiple of **2, 4, 8, 16, 32, or 64** (minimum one
-multiple). Actual megapixels may be slightly above or below the target, with
-small aspect-ratio changes from rounding; the whole image is retained without
-cropping. Supports upscaling and downscaling with ComfyUI's **lanczos** (default),
-**bicubic**, **bilinear**, **nearest-exact**, and **area** interpolation.
+## Saving paintings
 
-### Speedpaint
+Speedpaint supports dimensions from 64 to 4096 pixels and PNG, JPEG, or WebP imports.
+It has file import rather than an upstream IMAGE socket. Resizing painted work
+resizes the whole composition with Lanczos.
 
-**Category:** `WepeNerd/Image` · **Output:** `IMAGE`.
+Paintings are stored in `ComfyUI/input/wepenerd_speedpaint`. Copy that folder with
+your workflows when moving machines. Standard Save/Export and Queue wait for
+pending writes. Undo and redo share a 30-operation / 128 MiB history budget;
+history does not persist after reloading.
 
-Sketch on a solid background with **New**, or **Load** / drop a PNG, JPEG or WebP
-and paint over it. Width and height accept INT connections and local values
-(64–4096 pixels, step 1). Imports use an oriented, colour-managed, centered Lanczos
-crop at that exact size. Shift-drag before painting to reposition the crop.
+## Compatibility
 
-The compact toolbar has round/square brushes, colour with a hex picker, a live
-pixel-size slider, stroke opacity, pen pressure to size, and undo. Alt-click samples
-colour; `[` / `]` adjusts size; Ctrl/Cmd+Z undoes a stroke or canvas operation;
-Ctrl/Cmd+Shift+Z redoes it. Mouse strokes use full brush size. Resize the node to
-enlarge its canvas display without changing image resolution.
+Tested with ComfyUI 0.34.0, frontend 1.51.10, Python 3.12, and Windows. Browser and
+CPU/CUDA layer checks are included; physical tablet behavior and full-model Krea2
+image fidelity have not been comprehensively validated.
 
-Resizing painted artwork transforms the whole composition with Lanczos. Linked
-dimensions resolve during execution; the returned preview retains the committed
-source until you paint on it. Undo never changes an upstream resolution node.
-Connect `image` to **VAE Encode**, then use your existing sampler workflow.
+Masked LoRA supports native floating-point and INT8 ConvRot Krea2. Spatial masks
+can influence pixels outside the painted region through attention and denoising.
+A full mask does not necessarily match a global LoRA loader. See the node guide
+for unsupported model and adapter formats.
 
-Paintings and original imports use immutable assets in
-`ComfyUI/input/wepenerd_speedpaint`. Copy that folder along with workflows when
-moving machines. Queueing and standard Save/Export commands wait for pending
-preparation and asset writes; synchronous copies also retain a recovery PNG if a
-write is pending. Undo history is limited to 30 operations / 128 MiB and does not
-persist across reloads. Background colour changes apply to the next New/import.
+## More WepeNerd tools
 
-Validated with ComfyUI 0.34.0 / frontend 1.51.10, browser integration checks and a
-real VAE Encode/Decode execution. Physical tablet pressure has not been tested.
+- [LocalAI](https://github.com/WepeNerd/ComfyUI-WepeNerd-LocalAI): local prompt enhancement and captioning.
+- [Experimental](https://github.com/WepeNerd/ComfyUI-WepeNerd-Experimental): 3D, Liquify, and video utilities.
 
-### Load LoRA Masked
+The packages can be installed independently. Use current versions when combining
+them; the older all-in-one core includes duplicate nodes.
 
-**Category:** `WepeNerd/Loaders` · **Model:** native floating-point or INT8 ConvRot Krea2.
-
-Use ComfyUI's **Load Diffusion Model** loader, including for native INT8 ConvRot
-checkpoints. The base layer retains its quantized forward calculation; the masked
-LoRA/LoKr contribution runs separately in the activation dtype. The masked node does
-not expand the base weights to floating point. Ordinary global LoRA patches still
-follow ComfyUI's own weight patching and requantization behavior.
-
-Connect MODEL, choose an installed LoRA and set strength (negative values are supported).
-Open **Edit mask** and paint with the brush, rectangle or eraser. Empty masks have no
-effect. The magenta overlay is a fixed 45% display preview; painted interiors apply
-the full selected strength. Undo restores a whole gesture, image replacement or Clear.
-
-Drop/open an image to use its exact oriented dimensions, or paint on the default
-1024 × 1024 blank canvas. Masks map proportionally to the sampled image grid; use a
-reference with the intended aspect ratio for aligned regions. The editor follows the
-compact icon-toolbar layout, with explicit image loading and a removable reference.
-Right-click the node for **Open reference image…** while IMAGE is connected.
-
-**Load input** uses an available upstream preview. Otherwise it offers **Run upstream**,
-which queues only the connected IMAGE ancestors and a private snapshot sink. It uses
-the first batch image and never queues downstream generation. Connecting or removing
-a wire does not replace the reference. Different-size replacements require Replace /
-Cancel when painted. Same-size replacements retain the mask.
-
-Mask PNGs, reference PNGs, geometry, brush size and folded state are saved in the
-workflow; image data is embedded so exporting the workflow does not lose those assets.
-LoRA/model files must still be installed on the destination machine. Uploaded references
-and executed masks also use ComfyUI's input assets. Duplicates have independent editors.
-
-Chained masked nodes add independent spatial contributions and preserve ordinary
-global LoRA weight patches. Supported adapters are linear LoRA and full/factored LoKr,
-including alpha/rank scaling. DoRA, convolution/Tucker, reshape and other adapter formats
-are rejected on spatial layers. Text, timestep, modulation and normalization layers are
-omitted and diagnosed in logs. Native still-image reference layouts `index` and
-`index_timestep_zero` are supported; reference tokens themselves are not adapted.
-
-A full mask need not equal a global loader because of the omitted layers. Attention and
-denoising can spread indirect effects beyond the painted area; use final compositing
-when exact pixel preservation is needed. Custom INT8 loaders, GGUF, FP8, NVFP4, temporal inputs and patches
-that rearrange input tokens are outside v1 support. Real-model fidelity, generation
-timing and peak VRAM have not been benchmarked.
-
-Validation: 85 unit tests plus the CPU native Krea2 integration check in
-`tests/validate_masked_lora_comfy.py`, covering LoRA/LoKr math, reference layouts,
-independent same-file regions, global patch composition, clones and cleanup.
-`tests/validate_masked_lora_int8.py` checks native INT8 ConvRot on CPU and, with
-`--cuda`, GPU. It covers mixed floating-point layers, masks, LoRA/LoKr, chained regions,
-global LoRAs before/after, CPU/device transfers and packed-weight preservation.
-Pass `--checkpoint PATH` to also validate the first query layer from a native Krea2
-checkpoint. GPU validation included the 6144 × 6144 query layer from
-`KREA2_raw-int8-convrot-learned.safetensors` on an RTX 4090; this is a layer test,
-not a full-model image-quality or performance benchmark.
-
-### Slider
-
-A standardized semantic `-1 → 0 → +1` control that outputs a normal ComfyUI
-`FLOAT`. Connect its `strength` output to `strength_model`, `strength_clip`, or
-any other compatible FLOAT input. It maps LOW, CENTER, and HIGH independently,
-so positive-only, asymmetric, and reversed ranges work without changing the
-everyday slider interface.
-
-- Name each control with `Label` (for example, Realism, Age, or Detail).
-- Set LOW, CENTER, HIGH, and Curve for the control's semantic range.
-- Use **Hide Calibration** for the compact everyday view; right-click the node
-  and choose **Show Calibration** to reopen it. The visibility state is saved.
-- Drag near the center to snap to exactly `0`; hold Shift to bypass snapping.
-- Double-click the track, or use **Reset Slider to Center** in the node context
-  menu, to reset the normalized position to `0`.
-
-For a positive-only `0 → 3` range, use LOW `0`, CENTER `1.5`, and HIGH `3`,
-so both halves of the control remain useful. The Slider only produces a FLOAT;
-it does not select or load LoRAs.
-
-### Local AI
-
-**Category:** `WepeNerd/Local AI`
-
-The normal workflow shares one model connection across the task nodes:
-
-```text
-Local AI Model
-    model: Muse / Qwen GGUF
-        |
-        +--> Prompt Enhancer
-        |      skill: H3 or Krea 2
-        +--> H3 Prompt Enhancer
-        |      mode/task/action-detail controls
-        |
-        +--> Image Captioner
-        |
-        +--> Folder Captioner
-        |      skill: Character likeness / Style / Refiner
-        |
-        +--> Video Captioner
-```
-
-`Local AI Model` uses safe defaults, finds `llama-server` automatically, and releases its external CUDA allocation after each generation. `Prompt Enhancer` includes researched, local H3 and Krea 2 skills. `H3 Prompt Enhancer` adds H3-specific mode, task, action-detail, and enhancement controls while using the same local model backend. Image batches produce one caption per image. Video captioning automatically uses native video only when the backend explicitly reports support; otherwise it samples chronological frames with memory-safe seeking.
-
-Put model files here (subfolders are supported):
-
-```text
-ComfyUI/models/LLM/
-```
-
-For example, the model and projector in this setup are:
-
-```text
-Huihui-Qwen3.8-27B-abliterated-Q4_K.gguf
-mmproj-model-bf16.gguf
-```
-
-The nodes do not download or bundle llama.cpp. Install a recent `llama-server` build separately, then use one of these options:
-
-- put `llama-server.exe` on `PATH`;
-- set the `LLAMA_SERVER_PATH` environment variable;
-- extract the Windows build and CUDA runtime DLLs together under `C:\llamacpp\`;
-- copy the executable and its required DLLs to `ComfyUI-WepeNerd/bin/`; or
-- enter the full executable path in `Local AI Model (Advanced)`.
-
-Select `LLM/Huihui-Qwen3.8-27B-abliterated-Q4_K.gguf` as the model. The defaults request 24 GB of free VRAM, offload all model layers supported by the backend (`gpu_layers = -1`), use an 8192-token context, and release the server after generation.
-
-For image or video captioning, also select `LLM/mmproj-model-bf16.gguf`. Projectors are architecture/model-specific; discovery does not imply compatibility. Images are resized without upscaling and encoded as JPEG at quality 90. An image batch is processed through one server acquisition and returns one caption per image.
-
-Available nodes:
-
-| Node | Purpose |
-|---|---|
-| `Local AI Model` | Select a model and optional projector with safe defaults |
-| `Prompt Enhancer` | Rewrite a prompt using the bundled H3, Krea 2, or a custom skill |
-| `H3 Prompt Enhancer` | Compile an H3 prompt using explicit generation mode, task, action detail, and enhancement settings |
-| `Image Captioner` | Caption every image in a ComfyUI `IMAGE` batch |
-| `Folder Captioner` | Process a folder in one queued run and save matching `.txt` captions beside images |
-| `Video Captioner` | Automatically caption native video or sampled chronological frames |
-
-Prompt enhancement and caption nodes set `reasoning_effort` to `none`. Returned `<think>...</think>` blocks are removed, and hidden `reasoning_content` is never returned as a prompt or caption.
-
-#### Folder captioning
-
-Connect **Local AI Model → Folder Captioner**, select a compatible vision model
-and projector, enter an absolute image folder path, choose a **skill**, and click
-**Queue** once. The node runs as an output node without another connection.
-`photo.001.jpg` becomes `photo.001.txt` in the same directory, containing only its
-UTF-8 caption. Images stay unchanged. The model is acquired once for the batch,
-images are decoded one at a time, and each completed caption is saved immediately.
-The connected model's release/keep-alive policy applies when the batch ends.
-
-| Skill | Default captioning strategy |
-|---|---|
-| `Krea 2 - Character likeness` | Use the character trigger; describe pose, clothing, expression, surroundings, and other changeable details. Leave fixed likeness traits implicit. |
-| `Krea 2 - Style` | Describe scene content while leaving the target visual treatment implicit. |
-| `Krea 2 - Refiner` | Name the known concept and describe visible distinguishing structure and details. This prepares training captions; it does not refine images. |
-| `General caption` / `Custom` | General visual description, or the complete skill supplied in `instruction`. |
-
-`trigger_word` is optional and must be reproduced exactly when supplied. Use
-`concept_context` for facts and the learning goal shared by the folder, such as
-the target character, a specific car model, or a user-provided ethnicity label.
-The skills instruct the LLM not to infer ethnicity, nationality, or identity from
-appearance. `instruction` adds your direction to a bundled skill. For mixed
-identities or concepts, process separate folders with their own context.
-
-**Skip** preserves existing captions, including empty `.txt` files. Queue again to
-resume or process newly added images. **Overwrite** replaces a caption only after
-a complete response is ready. `include_subfolders` keeps captions beside each
-image in its own subfolder; symlinks and junctions are not traversed. Conflicting
-stems such as `photo.jpg` and `photo.png` in one folder are rejected before any
-generation. Unreadable/multipage images or failed/incomplete responses stop the
-batch with the current filename; already saved captions remain available.
-
-Supported still formats: JPEG, PNG, WebP, BMP, TIFF. Images are EXIF-oriented and
-resized proportionally to `image_max_edge` (1024 by default) for the LLM only.
-Increase `max_tokens` (768 by default) for longer captions; the model context must
-also accommodate the skill and image. There is no background folder watcher.
-
-The three Krea skills are editable local Markdown templates in `skills/` and are
-reloaded when their files change. Their choices are research-informed defaults,
-not proven optimal Krea2 LoRA recipes. See the [captioning research and examples](docs/krea2-captioning.md)
-for sources, trigger guidance, and the distinction between character/style
-isolation and concept refinement. Restart ComfyUI after installing the new node.
-
-#### H3 prompt enhancement
-
-`H3 Prompt Enhancer` preserves scene continuity: one `[Shot N]` block can contain several cuts or camera angles. A new tag marks a major scene/sequence boundary. Explicit action detail takes precedence over task defaults; `Strict` strengthens binding without overriding `Semantic`. Enhancement controls expression and organization; creative freedom controls permission to invent.
-
-The optional inputs are:
-
-| Input | Use |
-|---|---|
-| `duration_seconds` | Effective generated clip length. `0` means unspecified; new events use relative timing and first/last-frame alignment uses a semantic ending instead of an invented duration. |
-| `reference_context` | Supplied asset aliases, roles, and constraints. For example: `<Picture 1>: replacement identity. <Video 1>: source motion and camera. Video audio is not enabled.` |
-| `max_tokens` | Output budget, default 2048. Increase for long prompts if the model context has room. |
-| `creative_freedom` | `Preserve` (default) clarifies existing ideas. `Fill in details` enriches an outline with setting, atmosphere, camera, sound, and natural action progression. `Develop scenario` can also add supporting beats, reactions, and transitions. |
-| `image` | Optional IMAGE from Load Image or another image node. Leave `prompt` blank to create a video idea from the image alone, or add text direction. Requires a vision-capable local model and its matching projector. |
-| `image_role` | `Visual inspiration` (default): use visible subjects, mood, or style to create a prompt; `First frame`: develop motion from the image's opening state; `Reference image`: retain referenced identity or visual characteristics in a new scenario. |
-
-For a basic outline such as `A traveler finds an abandoned lighthouse`, use `Fill in details` with `Smart`. Choose `Develop scenario` when you also want the LLM to develop what happens. Explicit instructions, reference constraints, authored scene plans, and supplied dialogue/text take priority at every level. New dialogue, visible wording, lyrics, and music require a request. Expansion respects the clip duration and adds useful content rather than targeting a longer word count. Sampling stays the same across freedom levels; the permission is conveyed through the model instructions.
-
-With an image connected, `Auto` selects T2V for Visual inspiration, I2V for First frame, or Ref2V for Reference image. An explicit mode takes priority. Without an image, `Auto` infers from text. The enhancer can inspect only the images connected to it and cannot inspect the downstream graph. Specific modes load only their relevant appendix; the generic H3 skill remains complete.
-
-Connect `Load Image → image` and `Local AI Model → model`, choose an image role, and run with a blank prompt for an original short video scenario. For image-only input, the H3 node automatically uses `Develop scenario` when creative freedom is left on `Preserve`; text plus image follows your direction and chosen creative freedom. The image is sent to the local LLM only: connect it separately to H3 when using it as a first frame or generation reference. The same image inputs are available on `Prompt Enhancer` and `Prompt Enhancer (Advanced)`, including their H3 skill/style.
-
-Image batches are sent together for one prompt. In First frame mode, only the first image anchors the opening; additional images supply visual guidance. Reference images default to `<Picture 1>`, `<Picture 2>`, etc. in attachment order when no Picture aliases are supplied. For a different workflow numbering, state the attachment mapping in `reference_context`, e.g. `Attached image 1 = <Picture 0>: character identity.` Each image uses the existing in-memory JPEG encoder with a maximum edge of 1024 pixels.
-
-For text-only inference, the dedicated H3 node asks the local server to render and tokenize the chat, then checks that input plus output budget fits. Image requests use the backend's multimodal context handling; they skip the text-only token preflight. Increase the model context or reduce the output budget if images leave too little room. Returned prompts are checked for complete sections, explicit scene plans, identifiable dialogue/text literals, supplied subject/speaker labels, reference asset numbering, and timed-event bounds. Invalid output raises an actionable error. These checks cannot prove that every creative instruction was followed. Token-truncated output is rejected by the shared backend rather than returned as a usable prompt.
-
-Both simple prompt enhancers recognize Qwen 3.8 27B from the model filename, including the installed Huihui derivative. They explicitly set `enable_thinking=false` and use [Qwen's instruct sampling recommendation](https://huggingface.co/Qwen/Qwen3.8-27B): temperature 0.7, top-p 0.8, top-k 20, min-p 0, repetition penalty 1.0, and presence penalty 1.5. Frequency penalty stays at zero. Other models retain the existing conservative sampling. A renamed model file that omits its Qwen version/size will use those conservative defaults.
-
-Restart ComfyUI after installing this update to load the new inputs and Python behavior. Existing node IDs, required input order, connection types, and output names are unchanged.
-
-Video auto mode checks llama-server `/props`: it uses typed native `input_video` only when video support is explicit, otherwise it sends timestamped JPEG frames. Missing metadata is treated as unknown and falls back conservatively. File-backed clips use PyAV seek sampling, so memory scales with selected frames rather than total clip length. Audio and dialogue are not inferred.
-
-#### Local AI / Advanced
-
-**Category:** `WepeNerd/Local AI/Advanced`
-
-Use the advanced nodes for raw generation, a custom context size, GPU layers, KV cache overrides, Flash Attention overrides, keep-alive, a custom server executable, secondary-GPU selection, native/sampled video controls, status, or manual unloading.
-
-| Node | Purpose |
-|---|---|
-| `Local AI Model (Advanced)` | Full model, server, memory, and lifecycle configuration |
-| `Local AI Generate` | General text generation with optional image input |
-| `Prompt Enhancer (Advanced)` | Legacy styles and sampler controls, including H3 and Krea 2 |
-| `Image Captioner (Advanced)` | Caption cleanup, encoding, and sampler controls |
-| `Video Captioner (Advanced)` | Native/sampled modes and sampling controls |
-| `Local AI Status` | Report the managed server and advertised modalities |
-| `Unload Local AI Model` | Stop a resident keep-alive server |
-
-`release_after_generate = false` is an advanced speed option for consecutive calls. `keep_alive_seconds` can release an idle server automatically; zero means manual indefinite keep-alive. While resident, external llama.cpp VRAM is invisible to ComfyUI, so run `Unload Local AI Model` before returning to a heavy diffusion or video branch and create an actual STRING dependency edge when sequencing matters.
-
-Advanced config includes Flash Attention, F16/Q8 KV caches, vision-token bounds, and child-only `CUDA_VISIBLE_DEVICES`. For a dedicated secondary GPU, set `cuda_visible_devices` and choose `comfy_vram_handoff = never`; this does not modify ComfyUI's own environment. Q8 KV caches save memory but can change speed or quality slightly.
-
-The backend expects a current llama.cpp build with `--jinja`, `/health`, streaming chat completions, `reasoning_effort`, and multimodal `image_url` support. `/props` enriches identity/capability checks but incomplete metadata is tolerated. Native video additionally requires typed `input_video`; auto mode uses it only when `/props` explicitly advertises video support.
-
-Troubleshooting:
-
-- **llama-server was not found:** set the executable path as described above. A `.gguf` file cannot run by itself.
-- **Startup timeout or early exit:** inspect the ComfyUI console; the error includes the bounded tail of llama-server output.
-- **CUDA out of memory:** enable `aggressive_vram_handoff`, reduce context size, or reduce GPU layers.
-- **Image request rejected:** confirm the model is vision-capable, the projector belongs to the exact model, and the llama.cpp build is recent enough.
-- **Native video unavailable:** use `sampled_frames`; native support depends on both the model/projector and the llama.cpp build.
-
----
-
-### Exact Video Frames/FPS (WepeNerd)
-
-**Category:** `WepeNerd/Video`
-
-Loads a video from ComfyUI's input folder, or accepts a file-backed `VIDEO` input, and writes a new video with an exact target frame count and FPS.
-
-Because exact frame count/FPS changes require frame timing work, the node has two quality paths:
-
-- `lossless exact (FFV1/MKV)` decodes and writes a lossless MKV. This is the default because it verifies exact frame count and FPS without adding lossy generation loss.
-- `lossless exact (H.264 RGB/MP4)` writes a lossless H.264 MP4 for workflows that need MP4 output.
-- `stream copy best effort (no re-encode)` copies compressed video packets without re-encoding. It verifies the requested frame count, but FPS metadata is best effort because many containers preserve source packet timing during stream copy.
-
-Use `extension_mode` to choose what happens when the requested output is longer than the source at the requested FPS:
-
-- `hold_last_frame` extends with the final frame.
-- `loop_source` repeats the source video.
-
-Audio is dropped by default. `copy_trim_audio` copies the source audio packets and trims them to the new video duration without re-encoding, when the source/container supports it.
-
-| Input | Description |
-|---|---|
-| `video_file` | Video file from the ComfyUI input directory |
-| `video` | Optional connected file-backed ComfyUI `VIDEO` input |
-| `target_frame_count` | Exact number of output video frames |
-| `target_fps` | Exact output frame rate for lossless exact modes |
-| `quality_mode` | Lossless exact output or best-effort packet stream copy |
-| `extension_mode` | Hold the final frame or loop the source when more frames are needed |
-| `audio_mode` | Drop audio or copy/trim source audio packets |
-| `filename_prefix` | Output path prefix under the ComfyUI output directory |
-
-| Output | Type | Description |
-|---|---|---|
-| `video` | VIDEO | Generated video, ready for ComfyUI video nodes |
-| `output_path` | STRING | Absolute path to the generated file |
-| `info` | STRING | Source/output probe details and mode notes |
-
-Requires FFmpeg and FFprobe on PATH.
-
----
-
-### Liquify Image (WepeNerd)
-
-**Category:** `WepeNerd/Image`
-
-A self-contained browser liquify editor. Load or drag and drop an image directly inside the node, push-warp it with a brush, and output the latest warped result as a ComfyUI `IMAGE` plus an alpha-derived `MASK`.
-
-Current v1 limitation: this node is self-loading only. It does not yet accept an upstream ComfyUI `IMAGE` input. Larger images are downscaled to the browser working cap defined by `MAX_DIM` in `js/wn_liquify.js`.
-
-Known limitations:
-
-- The edited PNG is stored as base64 in the workflow JSON, so very large saved workflows are possible.
-- Reopening a workflow restores the last flattened warped image, not the original image plus editable displacement field.
-- Upstream `IMAGE` input support is planned for a future version.
-
----
-
-### Load OBJ
-
-**Category:** `WepeNerd/3D`
-
-Loads a Wavefront `.obj` model from a local path and produces a reusable `obj_model` connection for 3D placement. It also outputs a clay preview image and preview mask, so you can inspect the model before placing it over a background.
-
-Use the `choose .obj to upload` button or drag and drop an `.obj` file onto the node. Uploaded OBJ files are saved under `ComfyUI/input/3d/`, and the node fills the path widget automatically.
-
-| Output | Type | Description |
-|---|---|---|
-| `obj_model` | WN_OBJ3D | Connect this to `3D Product Placement` |
-| `preview` | IMAGE | Clay preview render on a neutral background |
-| `preview_mask` | MASK | Alpha mask for the preview render |
-
----
-
-### 3D Product Placement
-
-**Category:** `WepeNerd/3D`
-
-An interactive 3D object placement node for creating guide composites. Connect a normal ComfyUI `Load Image` node as the background, connect `Load OBJ (WepeNerd)` as the object, position the object visually in a JavaScript viewport, and output a composited image with the untextured clay model over the background.
-
-The node is designed for product/object placement guides, not final photoreal rendering.
-
-The queued composite uses a hidden browser viewport capture when available, so the output should match what you see in the node. If the capture is unavailable, the node falls back to the server-side renderer.
-
-**Features:**
-- Use a connected `IMAGE` input as the background and final output size
-- Use a connected `Load OBJ (WepeNerd)` node as the 3D model
-- Preview the model as a grey untextured clay object
-- Rotate, move, and scale the object interactively
-- Adjust basic directional lighting
-- Toggle a wireframe overlay for placement guides
-- Output a composited `IMAGE` and an object `MASK`
-- Store placement values as normal widgets so workflows save and reload
-
-| Action | Result |
-|---|---|
-| Left drag | Rotate object |
-| Shift + drag | Move object X/Y |
-| Mouse wheel | Scale object |
-| Right drag / Alt + drag | Adjust light direction |
-| Double-click | Reset placement |
-
-| Input | Description |
-|---|---|
-| `background_image` | Connected `IMAGE` used as the scene/background. Determines final output dimensions |
-| `obj_model` | Connected `WN_OBJ3D` from `Load OBJ (WepeNerd)` |
-| `x_offset` / `y_offset` / `z_offset` | Object position controls |
-| `scale` | Object scale |
-| `rotate_x` / `rotate_y` / `rotate_z` | Object rotation in degrees |
-| `camera_zoom` | Orthographic camera zoom |
-| `light_yaw` / `light_pitch` | Directional light position |
-| `light_intensity` | Light strength |
-| `wireframe_overlay` | Draw a dark wireframe over the clay object in the viewport and composite |
-| `opacity` | Opacity of the clay object in the final composite |
-
-| Output | Type | Description |
-|---|---|---|
-| `composite` | IMAGE | Background image with clay object composited over it |
-| `object_mask` | MASK | Alpha mask of the rendered 3D object |
-
-**Security note:** This first version is intended for local ComfyUI use. If you run ComfyUI with `--listen` or expose it to a network, restrict the OBJ preview route to safe folders before using absolute model paths. Good future-safe locations are `ComfyUI/input/3d/` and `ComfyUI/models/3d/`.
-
----
-
-### Drag Resolution
-
-An interactive visual resolution picker. Drag a box to set your output dimensions. Values snap to the chosen divisor grid in real time.
-
-**Features:**
-- Drag side handles to change one axis at a time, updating the aspect ratio as the pixel size changes
-- Drag corner handles to scale the resolution while preserving the current aspect ratio
-- Choose an aspect ratio preset (16:9, 4:3, 1:1, 9:16, and more) to reshape the box before dragging
-- Enter a Target MP value to generate a nearby divisor-aligned resolution at the selected aspect
-- Use the width/height input arrows to step by the current divisor value
-- Real-time dimension, megapixel, target-ratio, and actual-ratio readout on the box
-- Divisor snapping (32, 16, 8, 64) keeps every output cleanly divisible
-- Grid overlay shows divisor increments
-
-| Input | Description |
-|---|---|
-| `width` / `height` | Resolution (also set by dragging the box); arrow buttons step by the selected divisor |
-| `aspect_ratio` | Preset ratio to apply, or Free for the current/custom ratio |
-| `divisor` | Snap grid: 32 (default), 16, 8, or 64 |
-| `target_mp` | Resolution helper that scales width/height toward a requested megapixel area |
-
-| Output | Type | Description |
-|---|---|---|
-| `width` | INT | Final width (divisible by divisor) |
-| `height` | INT | Final height (divisible by divisor) |
-| `aspect_ratio` | STRING | Simplified ratio string (e.g. "16:9") |
-| `info` | STRING | Human-readable summary |
-
----
-
-## Workflow Compatibility
-
-Node IDs, widget names, output names, and the `WepeNerd/Resolution` category are unchanged. Existing workflows should continue to load. The frontend extension now lives in `./js/`, matching the exported `WEB_DIRECTORY`.
-
-After updating, restart ComfyUI, hard refresh the browser, create a Drag Resolution node, drag side and corner handles, and check the browser dev console for JavaScript errors.
-
----
-
-### Resolution Suggest
-
-Takes a source width/height and proportionally resizes to a target, snapped to a divisor grid. Useful for preparing dimensions for models that need specific multiples.
-
-| Input | Description |
-|---|---|
-| `width` / `height` | Source resolution |
-| `target` | Target size in pixels, or percentage for Scale Factor mode |
-| `resize_mode` | Longest Side, Shortest Side, Width, Height, or Scale Factor |
-| `divisor` | Snap grid: 32, 16, 8, or 64 |
-| `snap_mode` | round, floor, or ceil |
-
-| Output | Type | Description |
-|---|---|---|
-| `width` | INT | Resized width |
-| `height` | INT | Resized height |
-| `original_width` | INT | Pass-through of input width |
-| `original_height` | INT | Pass-through of input height |
-| `scale_factor` | FLOAT | Actual scale applied |
-| `aspect_ratio` | STRING | Simplified ratio string |
-| `info` | STRING | Human-readable summary |
-
----
-
-## Changelog
-
-### 2026-09-05 — Slider
-
-- Add the `Slider` FLOAT utility with a normalized LOW/CENTER/HIGH interface,
-  asymmetric calibration, curve control, compact mode, center snapping,
-  and a labeled red-neutral-green graphical control.
-
-### 2026-08-25 — H3 prompt compiler
-
-- Add a dedicated `H3 Prompt Enhancer` with mode, task, action-detail, and enhancement controls.
-- Upgrade the bundled H3 skill to the ambiguity-focused v2 compiler while retaining the generic `Prompt Enhancer` and existing workflows.
-
-### 2026-08-20 — Local AI simplified workflow
-
-- Add the clean `Local AI Model`, `Prompt Enhancer`, `Image Captioner`, and `Video Captioner` workflow while preserving every existing GGUF node ID and socket type.
-- Bundle local MiniMax H3 and Krea 2 prompt skills with safe, cached loading.
-- Make video auto mode capability-aware and lazy, with PyAV seek sampling for long file-backed clips.
-- Treat incomplete `/props` metadata as unknown, preserve healthy keep-alive servers on cancellation, and omit optional llama.cpp flags at their defaults.
-
-### 2026-08-20 — GGUF LLM/VLM hardening
-
-- Prevent hidden reasoning from becoming prompt or caption output.
-- Add streaming cancellation, verified server identity, safer process cleanup, and optional timed keep-alive.
-- Add full image-batch captioning, prompt/caption presets, optimized media encoding, modern samplers, and secondary-GPU controls.
-- Add `GGUF Caption Video` with native-video capability detection and timestamped sampled-frame fallback.
-- Register `models/LLM` through Comfy folder paths with extra-path support and cached discovery.
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+[Report an issue](https://github.com/WepeNerd/ComfyUI-WepeNerd/issues) with a minimal
+workflow and the relevant console output. Licensed under [MIT](LICENSE).

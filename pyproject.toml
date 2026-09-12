@@ -1,0 +1,13 @@
+[project]
+name = "wepenerd"
+version = "0.1.0"
+description = "Resolution tools, Speedpaint, and spatial Krea2 LoRA masks for ComfyUI."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = ["Pillow", "numpy"]
+
+
+[project.urls]
+Repository = "https://github.com/WepeNerd/ComfyUI-WepeNerd"
+Issues = "https://github.com/WepeNerd/ComfyUI-WepeNerd/issues"

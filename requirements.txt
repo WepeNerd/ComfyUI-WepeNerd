@@ -1,7 +1,3 @@
+# Torch and ComfyUI are provided by the host; do not install GPU wheels here.
 Pillow
 numpy
-trimesh
-pyrender
-PyOpenGL
-pyglet
-av

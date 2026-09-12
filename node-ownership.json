@@ -1,0 +1,13 @@
+{
+  "package": "ComfyUI-WepeNerd",
+  "source_commit": "41d75b3a4611d7aabac7f50444aa78eb07bdcbfe",
+  "nodes": {
+    "WN_ResolutionSuggest": "resolution_suggest",
+    "WN_DragResolution": "drag_resolution",
+    "WN_Slider": "slider_node",
+    "WN_ResizeMegapixels": "resize_megapixels_node",
+    "WN_Speedpaint": "speedpaint_node",
+    "WepeNerdLoadLoraMasked": "masked_lora_node",
+    "WN_MaskedLoraSnapshot": "masked_lora_node"
+  }
+}

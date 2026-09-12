@@ -4,7 +4,10 @@ __pycache__/
 .eggs/
 dist/
 build/
-*.egg
-*.zip
+.venv/
+.pytest_cache/
+node_modules/
 .DS_Store
 Thumbs.db
+bin/
+.release-preparation/

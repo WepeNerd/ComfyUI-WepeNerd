@@ -1,0 +1,299 @@
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "revision": 0,
+  "last_node_id": 3,
+  "last_link_id": 3,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "WN_ResolutionSuggest",
+      "pos": [
+        20,
+        20
+      ],
+      "size": [
+        311.909765625,
+        298
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "width",
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "height",
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "target",
+          "name": "target",
+          "type": "INT",
+          "widget": {
+            "name": "target"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "resize_mode",
+          "name": "resize_mode",
+          "type": "COMBO",
+          "widget": {
+            "name": "resize_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "divisor",
+          "name": "divisor",
+          "type": "COMBO",
+          "widget": {
+            "name": "divisor"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "snap_mode",
+          "name": "snap_mode",
+          "type": "COMBO",
+          "widget": {
+            "name": "snap_mode"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "width",
+          "name": "width",
+          "type": "INT",
+          "links": [
+            1
+          ]
+        },
+        {
+          "localized_name": "height",
+          "name": "height",
+          "type": "INT",
+          "links": [
+            2
+          ]
+        },
+        {
+          "localized_name": "original_width",
+          "name": "original_width",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "localized_name": "original_height",
+          "name": "original_height",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "localized_name": "scale_factor",
+          "name": "scale_factor",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "localized_name": "aspect_ratio",
+          "name": "aspect_ratio",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "info",
+          "name": "info",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "WN_ResolutionSuggest"
+      },
+      "widgets_values": [
+        1920,
+        1080,
+        1024,
+        "Longest Side",
+        32,
+        "round"
+      ],
+      "widgets_values_named": {
+        "width": 1920,
+        "height": 1080,
+        "target": 1024,
+        "resize_mode": "Longest Side",
+        "divisor": 32,
+        "snap_mode": "round"
+      }
+    },
+    {
+      "id": 2,
+      "type": "WN_Speedpaint",
+      "pos": [
+        440,
+        20
+      ],
+      "size": [
+        430,
+        575
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "width",
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 1
+        },
+        {
+          "localized_name": "height",
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 2
+        },
+        {
+          "localized_name": "document",
+          "name": "document",
+          "type": "STRING",
+          "widget": {
+            "name": "document"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "WN_Speedpaint",
+        "speedpaint": {
+          "colour": "#24232b",
+          "background": "#e8e6e1",
+          "size": 32,
+          "opacity": 100,
+          "shape": "round",
+          "pressure": true,
+          "local": [
+            1024,
+            1024
+          ]
+        }
+      },
+      "widgets_values": [
+        1024,
+        1024,
+        "{\"v\":1,\"background\":\"#e8e6e1\",\"painted\":false,\"crop\":[0.5,0.5],\"width\":1024,\"height\":1024}",
+        ""
+      ],
+      "widgets_values_named": {
+        "width": 1024,
+        "height": 1024,
+        "document": "{\"v\":1,\"background\":\"#e8e6e1\",\"painted\":false,\"crop\":[0.5,0.5],\"width\":1024,\"height\":1024,\"asset\":\"26e62c7a526f150f9591ecd6218d0193bf2ef95792c86922a534ac520c314b51.png\"}",
+        "speedpaint_editor": ""
+      }
+    },
+    {
+      "id": 3,
+      "type": "PreviewImage",
+      "pos": [
+        960,
+        20
+      ],
+      "size": [
+        140,
+        26
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      }
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "INT"
+    ],
+    [
+      2,
+      1,
+      1,
+      2,
+      1,
+      "INT"
+    ],
+    [
+      3,
+      2,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.9,
+      "offset": [
+        416,
+        110
+      ]
+    }
+  },
+  "version": 0.4
+}

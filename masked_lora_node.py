@@ -213,6 +213,8 @@ class WepeNerdLoadLoraMasked:
         import comfy.utils
         import folder_paths
 
+        if not hasattr(comfy.model_base, "Krea2"):
+            raise RuntimeError("Load LoRA Masked needs ComfyUI with native Krea2 support; tested with ComfyUI 0.34.0. Update ComfyUI and restart.")
         if not isinstance(model.model, comfy.model_base.Krea2):
             raise ValueError("Load LoRA Masked requires a native Krea2 MODEL.")
         if not math.isfinite(strength):
