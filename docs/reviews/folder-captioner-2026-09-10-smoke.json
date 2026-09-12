@@ -1,0 +1,57 @@
+{
+  "config": {
+    "model_path": "C:\\SD\\ComfyUI\\models\\LLM\\Huihui-Qwen3.8-27B-abliterated-Q4_K.gguf",
+    "mmproj_path": "C:\\SD\\ComfyUI\\models\\LLM\\mmproj-model-bf16.gguf",
+    "server_executable": "auto",
+    "context_size": 4096,
+    "gpu_layers": 8,
+    "target_free_vram_mb": 0,
+    "aggressive_vram_handoff": false,
+    "host": "127.0.0.1",
+    "port": 0,
+    "release_after_generate": false,
+    "startup_timeout_s": 300.0,
+    "request_timeout_s": 300,
+    "extra_args": [],
+    "keep_alive_seconds": 0,
+    "flash_attn": "auto",
+    "cache_type_k": "f16",
+    "cache_type_v": "f16",
+    "image_min_tokens": 0,
+    "image_max_tokens": 512,
+    "cuda_visible_devices": "",
+    "comfy_vram_handoff": "never",
+    "native_video_max_mb": 96
+  },
+  "fixture": "C:\\SD\\ComfyUI\\venv\\Lib\\site-packages\\matplotlib\\mpl-data\\sample_data\\grace_hopper.jpg",
+  "results": [
+    {
+      "skill": "Krea 2 - Character likeness",
+      "seconds": 113.92,
+      "written": 2,
+      "resume_skipped": 2,
+      "captions": [
+        "WNperson is an elderly woman wearing a dark navy uniform jacket, a white collared shirt, a black necktie, and a peaked cap with a gold emblem. She wears rectangular eyeglasses and has a row of colorful service ribbons pinned to her left chest. The portrait is framed from the chest up against a blue background with a partially visible American flag on the left.",
+        "WNperson is an elderly woman wearing a dark navy uniform jacket, a white collared shirt, a black necktie, and a peaked cap with a gold emblem. She wears rectangular eyeglasses and has a row of colorful service ribbons pinned to her left chest. The portrait is framed from the chest up against a blue background with a partially visible American flag on the left."
+      ]
+    },
+    {
+      "skill": "Krea 2 - Style",
+      "seconds": 42.99,
+      "written": 1,
+      "resume_skipped": 1,
+      "captions": [
+        "WNstyle captures a formal studio portrait of an elderly woman wearing a dark navy officer's uniform, white shirt, and black necktie. She wears a peaked cap with a gold eagle insignia and rectangular eyeglasses, with a name tag reading \"COMO\" and a row of colorful service ribbons pinned to her left chest. The background features a blue field with white stars and a draped American flag on the left side."
+      ]
+    },
+    {
+      "skill": "Krea 2 - Refiner",
+      "seconds": 38.45,
+      "written": 1,
+      "resume_skipped": 1,
+      "captions": [
+        "An elderly woman in a dark military uniform wears thin, wire-rimmed eyeglasses with rectangular lenses that sit squarely on her nose bridge. The delicate frames extend horizontally across her face, resting just below her eyebrows and framing her eyes clearly against her skin. The glasses are positioned centrally, creating a distinct focal point above her white collar and black tie."
+      ]
+    }
+  ]
+}

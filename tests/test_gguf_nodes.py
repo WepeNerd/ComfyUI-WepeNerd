@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+import numpy as np
+
 
 config_module = importlib.import_module("wepenerd_testpkg.wn_gguf_config")
 nodes = importlib.import_module("wepenerd_testpkg.wn_gguf_nodes")
@@ -61,9 +63,11 @@ class NodeCompatibilityTests(unittest.TestCase):
         self.assertEqual(required["action_detail"][1]["default"], "Auto")
         self.assertEqual(required["enhancement"][1]["default"], "Smart")
         optional = nodes.WN_H3PromptEnhancer.INPUT_TYPES()["optional"]
-        self.assertEqual(list(optional), ["duration_seconds", "reference_context", "max_tokens", "creative_freedom"])
+        self.assertEqual(list(optional), ["duration_seconds", "reference_context", "max_tokens", "creative_freedom", "image", "image_role"])
         self.assertEqual(optional["creative_freedom"][0], ["Preserve", "Fill in details", "Develop scenario"])
         self.assertEqual(optional["creative_freedom"][1]["default"], "Preserve")
+        self.assertEqual(optional["image"], ("IMAGE",))
+        self.assertEqual(optional["image_role"][1]["default"], "Visual inspiration")
         self.assertEqual(nodes.WN_H3PromptEnhancer.RETURN_NAMES, ("enhanced_prompt",))
         self.assertEqual(nodes.NODE_DISPLAY_NAME_MAPPINGS["WN_H3PromptEnhancer"], "H3 Prompt Enhancer")
 
@@ -203,6 +207,106 @@ class NodeCompatibilityTests(unittest.TestCase):
         other = nodes._enhancement_payload("Muse-Glimmer-30B.gguf", "request", "skill")
         self.assertEqual(other["temperature"], 0.2)
         self.assertNotIn("chat_template_kwargs", other)
+
+    def test_h3_image_only_routes_each_role_and_keeps_one_prompt_output(self):
+        base = "integrated_multimodal_description: [Shot 1] A toy boat glides across the pond.\noverall_soundscape: Water.\nnon_diegetic_music: N/A"
+        first = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\n" + base
+        reference = ("subject_definitions: <Subject 1> is the boat in <Picture 1>.\n"
+                     "summary: [reference generation] The boat sails.\n"
+                     "retention_analysis: <Subject 1>: fully_preserved - retain its appearance.\n"
+                     "detailed_description: [Shot 1] <Subject 1> glides across the pond.\n"
+                     "overall_soundscape: Water.\nnon_diegetic_music: N/A")
+        image = np.ones((1, 64, 96, 3), dtype=np.float32)
+        with tempfile.TemporaryDirectory() as directory:
+            config = config_in(Path(directory))
+            for role, mode, compiled in (("Visual inspiration", "T2V", base), ("First frame", "I2V", first),
+                                         ("Reference image", "Ref2V", reference)):
+                with self.subTest(role=role), mock.patch.object(nodes, "_run_payloads", return_value=[compiled]) as run:
+                    self.assertEqual(nodes.WN_H3PromptEnhancer().enhance(
+                        config, "  ", image=image, image_role=role), (compiled,))
+                payload = run.call_args.args[1][0]
+                content = payload["messages"][1]["content"]
+                request = json.loads(content[0]["text"])
+                self.assertEqual(request["settings"]["generation_mode"], mode)
+                self.assertEqual(request["settings"]["creative_freedom"], "Develop scenario")
+                self.assertIn("## Creative freedom: Develop scenario", payload["messages"][0]["content"])
+                self.assertNotIn("## Creative freedom: Preserve", payload["messages"][0]["content"])
+                self.assertIn("Create one imaginative", request["user_request"])
+                self.assertIn(role, content[2]["text"])
+                self.assertEqual(content[3]["type"], "image_url")
+                self.assertTrue(content[3]["image_url"]["url"].startswith("data:image/jpeg;base64,"))
+                self.assertEqual(run.call_args.kwargs, {"require_image": True, "check_text_context": False})
+
+    def test_h3_image_text_preserves_explicit_mode_constraints_and_sampling(self):
+        source = '[Shot 1] The boat stays still. A sign reads "HELLO".'
+        compiled = "integrated_multimodal_description: " + source + "\noverall_soundscape: N/A\nnon_diegetic_music: N/A"
+        image = np.ones((1, 64, 64, 3), dtype=np.float32)
+        with tempfile.TemporaryDirectory() as directory:
+            config = config_in(Path(directory))
+            for role in nodes.ENHANCEMENT_IMAGE_ROLES:
+                with self.subTest(role=role), mock.patch.object(nodes, "_run_payloads", return_value=[compiled]) as run:
+                    nodes.WN_H3PromptEnhancer().enhance(config, source, "T2V", image=image, image_role=role,
+                        creative_freedom="Fill in details", duration_seconds=5, reference_context="No camera movement.")
+                payload = run.call_args.args[1][0]
+                request = json.loads(payload["messages"][1]["content"][0]["text"])
+                self.assertEqual(request["user_request"], source)
+                self.assertEqual(request["settings"]["generation_mode"], "T2V")
+                self.assertEqual(request["settings"]["creative_freedom"], "Fill in details")
+                self.assertEqual(request["reference_context"], "No camera movement.")
+                self.assertEqual(payload["reasoning_effort"], "none")
+                with mock.patch.object(nodes, "_run_payloads", return_value=[compiled.replace("HELLO", "HI")]):
+                    with self.assertRaisesRegex(ValueError, "quoted"):
+                        nodes.WN_H3PromptEnhancer().enhance(config, source, "T2V", image=image, image_role=role)
+
+    def test_generic_enhancers_accept_image_only_and_keep_all_batch_images(self):
+        image = np.ones((2, 64, 64, 3), dtype=np.float32)
+        with tempfile.TemporaryDirectory() as directory:
+            config = config_in(Path(directory))
+            calls = (
+                lambda **kwargs: nodes.WN_PromptEnhancer().enhance(config, "", "H3", **kwargs),
+                lambda **kwargs: nodes.WN_GGUFPromptEnhance().enhance(config, "", 1024, 0.2, 0, "minimax_h3", **kwargs),
+            )
+            for call in calls:
+                with mock.patch.object(nodes, "_run_payloads", return_value=["one video prompt"]) as run:
+                    self.assertEqual(call(image=image, image_role="Reference image"), ("one video prompt",))
+                self.assertEqual(len(run.call_args.args[1]), 1)
+                payload = run.call_args.args[1][0]
+                content = payload["messages"][1]["content"]
+                self.assertEqual(sum(part["type"] == "image_url" for part in content), 2)
+                self.assertTrue(run.call_args.kwargs["require_image"])
+                self.assertIn("Reference image", content[2]["text"])
+                self.assertIn("Reference image", content[4]["text"])
+
+    def test_image_enhancement_rejects_missing_projector_and_empty_text_without_image(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = config_in(Path(directory))
+            text_only = config_module.WNGGUFConfig(model_path=config.model_path, server_executable=config.server_executable)
+            calls = (
+                lambda cfg, **kwargs: nodes.WN_H3PromptEnhancer().enhance(cfg, "", **kwargs),
+                lambda cfg, **kwargs: nodes.WN_PromptEnhancer().enhance(cfg, "", **kwargs),
+                lambda cfg, **kwargs: nodes.WN_GGUFPromptEnhance().enhance(cfg, "", 512, 0.2, 0, **kwargs),
+            )
+            for call in calls:
+                with mock.patch.object(nodes, "_run_payloads") as run:
+                    with self.assertRaisesRegex(ValueError, "mmproj"):
+                        call(text_only, image=object())
+                    with self.assertRaisesRegex(ValueError, "empty"):
+                        call(config)
+                    with self.assertRaisesRegex(ValueError, "image_role"):
+                        call(config, image=object(), image_role="Unknown")
+                    run.assert_not_called()
+
+    def test_image_enhancement_checks_backend_vision_support(self):
+        handle = mock.Mock()
+        handle.capability.return_value = False
+        with tempfile.TemporaryDirectory() as directory:
+            config = config_in(Path(directory))
+            with mock.patch.object(nodes, "_acquire_prepared", return_value=handle), mock.patch.object(
+                nodes.SERVER_MANAGER, "chat_completion"
+            ) as chat, mock.patch.object(nodes, "_finish_request"):
+                with self.assertRaisesRegex(server.RequestRejectedError, "image/vision"):
+                    nodes.WN_H3PromptEnhancer().enhance(config, "", image=np.ones((1, 64, 64, 3)))
+                chat.assert_not_called()
 
     def test_h3_optional_context_and_output_budget_reach_the_model(self):
         with tempfile.TemporaryDirectory() as directory:

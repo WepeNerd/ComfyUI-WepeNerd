@@ -9,6 +9,9 @@ import threading
 BUILTIN_SKILLS = {
     "h3": "H3_Skill.md",
     "krea2": "Krea2_Skill.md",
+    "krea2_character_caption": "Krea2_Character_Caption.md",
+    "krea2_style_caption": "Krea2_Style_Caption.md",
+    "krea2_refiner_caption": "Krea2_Refiner_Caption.md",
 }
 
 _SKILLS_DIR = (Path(__file__).resolve().parent / "skills").resolve()

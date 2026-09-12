@@ -27,6 +27,48 @@ Restart ComfyUI. Nodes appear under the **WepeNerd/Utilities**,
 
 ## Nodes
 
+### Resize Image Megapixels
+
+**Category:** `WepeNerd/Image` · **Input/Output:** `IMAGE`.
+
+Resize an image or batch to a target megapixel count (1 MP = 1,000,000 pixels).
+The node calculates the size at the original aspect ratio, then rounds each
+dimension to the nearest multiple of **2, 4, 8, 16, 32, or 64** (minimum one
+multiple). Actual megapixels may be slightly above or below the target, with
+small aspect-ratio changes from rounding; the whole image is retained without
+cropping. Supports upscaling and downscaling with ComfyUI's **lanczos** (default),
+**bicubic**, **bilinear**, **nearest-exact**, and **area** interpolation.
+
+### Speedpaint
+
+**Category:** `WepeNerd/Image` · **Output:** `IMAGE`.
+
+Sketch on a solid background with **New**, or **Load** / drop a PNG, JPEG or WebP
+and paint over it. Width and height accept INT connections and local values
+(64–4096 pixels, step 1). Imports use an oriented, colour-managed, centered Lanczos
+crop at that exact size. Shift-drag before painting to reposition the crop.
+
+The compact toolbar has round/square brushes, colour with a hex picker, a live
+pixel-size slider, stroke opacity, pen pressure to size, and undo. Alt-click samples
+colour; `[` / `]` adjusts size; Ctrl/Cmd+Z undoes a stroke or canvas operation;
+Ctrl/Cmd+Shift+Z redoes it. Mouse strokes use full brush size. Resize the node to
+enlarge its canvas display without changing image resolution.
+
+Resizing painted artwork transforms the whole composition with Lanczos. Linked
+dimensions resolve during execution; the returned preview retains the committed
+source until you paint on it. Undo never changes an upstream resolution node.
+Connect `image` to **VAE Encode**, then use your existing sampler workflow.
+
+Paintings and original imports use immutable assets in
+`ComfyUI/input/wepenerd_speedpaint`. Copy that folder along with workflows when
+moving machines. Queueing and standard Save/Export commands wait for pending
+preparation and asset writes; synchronous copies also retain a recovery PNG if a
+write is pending. Undo history is limited to 30 operations / 128 MiB and does not
+persist across reloads. Background colour changes apply to the next New/import.
+
+Validated with ComfyUI 0.34.0 / frontend 1.51.10, browser integration checks and a
+real VAE Encode/Decode execution. Physical tablet pressure has not been tested.
+
 ### Load LoRA Masked
 
 **Category:** `WepeNerd/Loaders` · **Model:** native floating-point or INT8 ConvRot Krea2.
@@ -107,7 +149,7 @@ it does not select or load LoRAs.
 
 **Category:** `WepeNerd/Local AI`
 
-The normal workflow has five simple nodes:
+The normal workflow shares one model connection across the task nodes:
 
 ```text
 Local AI Model
@@ -119,6 +161,9 @@ Local AI Model
         |      mode/task/action-detail controls
         |
         +--> Image Captioner
+        |
+        +--> Folder Captioner
+        |      skill: Character likeness / Style / Refiner
         |
         +--> Video Captioner
 ```
@@ -158,9 +203,53 @@ Available nodes:
 | `Prompt Enhancer` | Rewrite a prompt using the bundled H3, Krea 2, or a custom skill |
 | `H3 Prompt Enhancer` | Compile an H3 prompt using explicit generation mode, task, action detail, and enhancement settings |
 | `Image Captioner` | Caption every image in a ComfyUI `IMAGE` batch |
+| `Folder Captioner` | Process a folder in one queued run and save matching `.txt` captions beside images |
 | `Video Captioner` | Automatically caption native video or sampled chronological frames |
 
 Prompt enhancement and caption nodes set `reasoning_effort` to `none`. Returned `<think>...</think>` blocks are removed, and hidden `reasoning_content` is never returned as a prompt or caption.
+
+#### Folder captioning
+
+Connect **Local AI Model → Folder Captioner**, select a compatible vision model
+and projector, enter an absolute image folder path, choose a **skill**, and click
+**Queue** once. The node runs as an output node without another connection.
+`photo.001.jpg` becomes `photo.001.txt` in the same directory, containing only its
+UTF-8 caption. Images stay unchanged. The model is acquired once for the batch,
+images are decoded one at a time, and each completed caption is saved immediately.
+The connected model's release/keep-alive policy applies when the batch ends.
+
+| Skill | Default captioning strategy |
+|---|---|
+| `Krea 2 - Character likeness` | Use the character trigger; describe pose, clothing, expression, surroundings, and other changeable details. Leave fixed likeness traits implicit. |
+| `Krea 2 - Style` | Describe scene content while leaving the target visual treatment implicit. |
+| `Krea 2 - Refiner` | Name the known concept and describe visible distinguishing structure and details. This prepares training captions; it does not refine images. |
+| `General caption` / `Custom` | General visual description, or the complete skill supplied in `instruction`. |
+
+`trigger_word` is optional and must be reproduced exactly when supplied. Use
+`concept_context` for facts and the learning goal shared by the folder, such as
+the target character, a specific car model, or a user-provided ethnicity label.
+The skills instruct the LLM not to infer ethnicity, nationality, or identity from
+appearance. `instruction` adds your direction to a bundled skill. For mixed
+identities or concepts, process separate folders with their own context.
+
+**Skip** preserves existing captions, including empty `.txt` files. Queue again to
+resume or process newly added images. **Overwrite** replaces a caption only after
+a complete response is ready. `include_subfolders` keeps captions beside each
+image in its own subfolder; symlinks and junctions are not traversed. Conflicting
+stems such as `photo.jpg` and `photo.png` in one folder are rejected before any
+generation. Unreadable/multipage images or failed/incomplete responses stop the
+batch with the current filename; already saved captions remain available.
+
+Supported still formats: JPEG, PNG, WebP, BMP, TIFF. Images are EXIF-oriented and
+resized proportionally to `image_max_edge` (1024 by default) for the LLM only.
+Increase `max_tokens` (768 by default) for longer captions; the model context must
+also accommodate the skill and image. There is no background folder watcher.
+
+The three Krea skills are editable local Markdown templates in `skills/` and are
+reloaded when their files change. Their choices are research-informed defaults,
+not proven optimal Krea2 LoRA recipes. See the [captioning research and examples](docs/krea2-captioning.md)
+for sources, trigger guidance, and the distinction between character/style
+isolation and concept refinement. Restart ComfyUI after installing the new node.
 
 #### H3 prompt enhancement
 
@@ -174,12 +263,18 @@ The optional inputs are:
 | `reference_context` | Supplied asset aliases, roles, and constraints. For example: `<Picture 1>: replacement identity. <Video 1>: source motion and camera. Video audio is not enabled.` |
 | `max_tokens` | Output budget, default 2048. Increase for long prompts if the model context has room. |
 | `creative_freedom` | `Preserve` (default) clarifies existing ideas. `Fill in details` enriches an outline with setting, atmosphere, camera, sound, and natural action progression. `Develop scenario` can also add supporting beats, reactions, and transitions. |
+| `image` | Optional IMAGE from Load Image or another image node. Leave `prompt` blank to create a video idea from the image alone, or add text direction. Requires a vision-capable local model and its matching projector. |
+| `image_role` | `Visual inspiration` (default): use visible subjects, mood, or style to create a prompt; `First frame`: develop motion from the image's opening state; `Reference image`: retain referenced identity or visual characteristics in a new scenario. |
 
 For a basic outline such as `A traveler finds an abandoned lighthouse`, use `Fill in details` with `Smart`. Choose `Develop scenario` when you also want the LLM to develop what happens. Explicit instructions, reference constraints, authored scene plans, and supplied dialogue/text take priority at every level. New dialogue, visible wording, lyrics, and music require a request. Expansion respects the clip duration and adds useful content rather than targeting a longer word count. Sampling stays the same across freedom levels; the permission is conveyed through the model instructions.
 
-The enhancer receives text only. `Auto` infers from that text; it cannot inspect media or the downstream graph. Select the mode explicitly when known. Specific modes load only their relevant appendix; the generic H3 skill remains complete.
+With an image connected, `Auto` selects T2V for Visual inspiration, I2V for First frame, or Ref2V for Reference image. An explicit mode takes priority. Without an image, `Auto` infers from text. The enhancer can inspect only the images connected to it and cannot inspect the downstream graph. Specific modes load only their relevant appendix; the generic H3 skill remains complete.
 
-Before inference, the dedicated H3 node asks the local server to render and tokenize the chat, then checks that input plus output budget fits. Returned prompts are checked for complete sections, explicit scene plans, identifiable dialogue/text literals, supplied subject/speaker labels, reference asset numbering, and timed-event bounds. Invalid output raises an actionable error. These checks cannot prove that every creative instruction was followed. Token-truncated output is rejected by the shared backend rather than returned as a usable prompt.
+Connect `Load Image → image` and `Local AI Model → model`, choose an image role, and run with a blank prompt for an original short video scenario. For image-only input, the H3 node automatically uses `Develop scenario` when creative freedom is left on `Preserve`; text plus image follows your direction and chosen creative freedom. The image is sent to the local LLM only: connect it separately to H3 when using it as a first frame or generation reference. The same image inputs are available on `Prompt Enhancer` and `Prompt Enhancer (Advanced)`, including their H3 skill/style.
+
+Image batches are sent together for one prompt. In First frame mode, only the first image anchors the opening; additional images supply visual guidance. Reference images default to `<Picture 1>`, `<Picture 2>`, etc. in attachment order when no Picture aliases are supplied. For a different workflow numbering, state the attachment mapping in `reference_context`, e.g. `Attached image 1 = <Picture 0>: character identity.` Each image uses the existing in-memory JPEG encoder with a maximum edge of 1024 pixels.
+
+For text-only inference, the dedicated H3 node asks the local server to render and tokenize the chat, then checks that input plus output budget fits. Image requests use the backend's multimodal context handling; they skip the text-only token preflight. Increase the model context or reduce the output budget if images leave too little room. Returned prompts are checked for complete sections, explicit scene plans, identifiable dialogue/text literals, supplied subject/speaker labels, reference asset numbering, and timed-event bounds. Invalid output raises an actionable error. These checks cannot prove that every creative instruction was followed. Token-truncated output is rejected by the shared backend rather than returned as a usable prompt.
 
 Both simple prompt enhancers recognize Qwen 3.8 27B from the model filename, including the installed Huihui derivative. They explicitly set `enable_thinking=false` and use [Qwen's instruct sampling recommendation](https://huggingface.co/Qwen/Qwen3.8-27B): temperature 0.7, top-p 0.8, top-k 20, min-p 0, repetition penalty 1.0, and presence penalty 1.5. Frequency penalty stays at zero. Other models retain the existing conservative sampling. A renamed model file that omits its Qwen version/size will use those conservative defaults.
 

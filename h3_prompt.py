@@ -43,7 +43,7 @@ def select_h3_skill(skill: str, mode: str, creative_freedom: str | None = None) 
     return "\n\n".join(selected + permission)
 
 
-def validate_h3_prompt(output: str, source: str, mode: str, duration: float, reference_context: str = "") -> str:
+def validate_h3_prompt(output: str, source: str, mode: str, duration: float, reference_context: str = "", image_count: int = 0) -> str:
     """Reject structurally incomplete rewrites and changes to identifiable literals."""
     text = output.strip()
     if text.startswith("```"):
@@ -105,6 +105,8 @@ def validate_h3_prompt(output: str, source: str, mode: str, duration: float, ref
     if mode == "Auto" and expected == BASE_FIELDS:
         # Auto may infer an endpoint task from ordinary image descriptions.
         implicit_frames = {("Picture", "1"), ("Picture", "2")}
+    if mode.startswith("Ref") or mode in ("I2V", "FL2V", "FL2VA"):
+        implicit_frames.update(("Picture", str(index)) for index in range(1, image_count + 1))
     if any(kind == "Picture" for kind, _ in known_assets):
         implicit_frames = set()
     generated_assets = set(_ASSET.findall(text))

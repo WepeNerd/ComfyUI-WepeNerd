@@ -1,0 +1,47 @@
+{
+  "config": {
+    "model_path": "C:\\SD\\ComfyUI\\models\\LLM\\Huihui-Qwen3.8-27B-abliterated-Q4_K.gguf",
+    "mmproj_path": "C:\\SD\\ComfyUI\\models\\LLM\\mmproj-model-bf16.gguf",
+    "server_executable": "auto",
+    "context_size": 4096,
+    "gpu_layers": 8,
+    "target_free_vram_mb": 0,
+    "aggressive_vram_handoff": false,
+    "host": "127.0.0.1",
+    "port": 0,
+    "release_after_generate": false,
+    "startup_timeout_s": 300.0,
+    "request_timeout_s": 300,
+    "extra_args": [],
+    "keep_alive_seconds": 0,
+    "flash_attn": "auto",
+    "cache_type_k": "f16",
+    "cache_type_v": "f16",
+    "image_min_tokens": 0,
+    "image_max_tokens": 512,
+    "cuda_visible_devices": "",
+    "comfy_vram_handoff": "never",
+    "native_video_max_mb": 96
+  },
+  "fixture": "C:\\SD\\ComfyUI\\venv\\Lib\\site-packages\\matplotlib\\mpl-data\\sample_data\\grace_hopper.jpg",
+  "results": [
+    {
+      "skill": "Krea 2 - Style",
+      "seconds": 54.67,
+      "written": 1,
+      "resume_skipped": 1,
+      "captions": [
+        "WNstyle captures a formal studio portrait of an elderly woman wearing a dark navy military uniform with a white shirt, black tie, and a peaked cap adorned with a gold eagle insignia. She wears rectangular glasses and has a name tag reading \"COMO\" on her left chest, alongside a row of colorful service ribbons on her right. The background features a blue backdrop with a partial view of an American flag on the left."
+      ]
+    },
+    {
+      "skill": "Krea 2 - Refiner",
+      "seconds": 29.12,
+      "written": 1,
+      "resume_skipped": 1,
+      "captions": [
+        "An elderly woman in a dark military uniform wears thin, wire-rimmed eyeglasses with rectangular lenses. The glasses sit squarely on the bridge of her nose, with the temples extending back toward her ears, framing her eyes clearly against her face."
+      ]
+    }
+  ]
+}

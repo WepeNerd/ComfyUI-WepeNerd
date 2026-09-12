@@ -101,6 +101,19 @@ class H3PromptTests(unittest.TestCase):
         fallback = "The target video begins from Picture 1 and reaches Picture 2 at the end of the final scene.\n\n" + BASE
         validate_h3_prompt(fallback, "Open to closed", "FL2V", 0)
 
+    def test_attached_reference_images_allow_only_real_defaults_or_supplied_aliases(self):
+        context = "<Video 1>: source motion."
+        self.assertEqual(validate_h3_prompt(REF, "Replace", "Ref2V", 0, context, image_count=1), REF)
+        with self.assertRaisesRegex(ValueError, "invented"):
+            validate_h3_prompt(REF.replace("<Picture 1>", "<Picture 2>"), "Replace", "Ref2V", 0, context, image_count=1)
+        validate_h3_prompt(REF.replace("<Picture 1>", "<Picture 2>"), "Replace", "Ref2V", 0, context, image_count=2)
+        numbered = context + " Attached image 1 is <Picture 0>: identity."
+        validate_h3_prompt(REF.replace("<Picture 1>", "<Picture 0>"), "Replace", "Ref2V", 0, numbered, image_count=1)
+        with self.assertRaisesRegex(ValueError, "invented"):
+            validate_h3_prompt(REF, "Replace", "Ref2V", 0, numbered, image_count=1)
+        with self.assertRaisesRegex(ValueError, "invented"):
+            validate_h3_prompt(BASE.replace("A woman", "The woman from <Picture 1>"), "Create a scene", "T2V", 0, image_count=1)
+
     def test_timestamps_are_checked_only_on_the_visual_timeline(self):
         for events in ("At 00:05.000, cut.", "At 00:04.000, cut. At 00:02.000, cut.", "At 00:02.000, cut. At 00:02.000, cut."):
             with self.subTest(events=events), self.assertRaisesRegex(ValueError, "timestamps"):
