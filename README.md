@@ -1,6 +1,6 @@
 # ComfyUI-WepeNerd
 
-Resolution tools, a compact sketch canvas, and spatial LoRA masks for ComfyUI.
+Resolution tools, painting and image warping, and spatial LoRA masks for ComfyUI.
 
 | Tool | What it does |
 |---|---|
@@ -8,6 +8,7 @@ Resolution tools, a compact sketch canvas, and spatial LoRA masks for ComfyUI.
 | **Resolution Suggest** | Calculate dimensions from a target size or scale factor |
 | **Resize Image Megapixels** | Resize an image batch to a target area without cropping |
 | **Speedpaint** | Sketch from a blank canvas or imported image and output an IMAGE |
+| **Liquify Image** | Push-warp files or connected IMAGE batches with editable strokes and full-resolution output |
 | **Slider** | Map a compact FLOAT control to your preferred strength range |
 | **Load LoRA Masked · Beta** | Apply spatial LoRA/LoKr regions to native Krea2 models |
 
@@ -41,6 +42,9 @@ workflow.
 - **Resolution tools:** choose a divisor that matches your model's required
   dimensions. Megapixel resizing retains the whole image, with small aspect changes
   possible from rounding.
+- **Liquify:** load an image, or connect IMAGE and Queue once to see its preview.
+  Drag to warp, use Undo/Redo, then Queue to render at the source resolution.
+  Try the [Liquify example](examples/liquify.json).
 - **Masked LoRA:** connect a native Krea2 MODEL, select a LoRA, and open **Edit mask**.
   Empty masks have no effect. This node is specific to Krea2 and remains in Beta.
 
@@ -71,10 +75,14 @@ for unsupported model and adapter formats.
 ## More WepeNerd tools
 
 - [LocalAI](https://github.com/WepeNerd/ComfyUI-WepeNerd-LocalAI): local prompt enhancement and captioning.
-- [Experimental](https://github.com/WepeNerd/ComfyUI-WepeNerd-Experimental): 3D, Liquify, and video utilities.
+- [Experimental](https://github.com/WepeNerd/ComfyUI-WepeNerd-Experimental): 3D and video utilities.
 
 The packages can be installed independently. Use current versions when combining
 them; the older all-in-one core includes duplicate nodes.
+
+Liquify is included in core from **0.2.0**. If you also have Experimental installed,
+update it to **0.2.0 or newer** before restarting ComfyUI. Existing Liquify nodes
+and saved paintings keep their IDs and outputs.
 
 [Report an issue](https://github.com/WepeNerd/ComfyUI-WepeNerd/issues) with a minimal
 workflow and the relevant console output. Licensed under [MIT](LICENSE).

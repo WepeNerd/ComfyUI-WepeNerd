@@ -69,7 +69,16 @@ def main():
             if args.source:
                 original=load(args.source.resolve(),'legacy_wepenerd')
                 expected={k:contract(v) for k,v in original.NODE_CLASS_MAPPINGS.items()}
-                assert expected==contracts,'Legacy node contracts changed or ownership is incomplete'
+                assert expected.keys()==contracts.keys(),'Node ownership is incomplete'
+                for node_id,old in expected.items():
+                    current=contracts[node_id]
+                    for key,value in old.items():
+                        if key!='inputs':
+                            assert current[key]==value,f'{node_id}: changed {key}'
+                    assert current['inputs'].get('required',[])==old['inputs'].get('required',[]),f'{node_id}: required inputs changed'
+                    for kind in ('optional','hidden'):
+                        original_inputs=old['inputs'].get(kind,[])
+                        assert current['inputs'].get(kind,[])[:len(original_inputs)]==original_inputs,f'{node_id}: changed existing {kind} inputs'
     finally:
         sys.meta_path.remove(blocker)
     print(json.dumps({'nodes':registered,'routes':routes,'frontend_entrypoints':sorted(extensions),'legacy_contracts':bool(args.source)},indent=2))

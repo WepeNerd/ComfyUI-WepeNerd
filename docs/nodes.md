@@ -126,6 +126,50 @@ Validated with ComfyUI 0.34.0 / frontend 1.51.10, browser integration checks and
 real VAE Encode/Decode execution. Physical tablet pressure has not been tested.
 
 
+## Liquify Image
+
+**Category:** `WepeNerd/Image` · **Outputs:** `IMAGE`, `MASK`.
+
+Load or drop a PNG, JPEG or WebP, then drag the push brush to reshape it. The
+original image stays intact: Undo/Redo removes or restores strokes, Reset removes
+all warps, and holding Original lets you compare. Ctrl/Cmd+Z and
+Ctrl/Cmd+Shift+Z work while the editor is focused. Reset can be undone during the
+current editing session.
+
+The optional **image** connection accepts a normal IMAGE or batch. Connect it and
+Queue once to load the first image as the editor preview; edit, then Queue again
+to apply the warp. Keep a downstream Preview Image or other output node connected
+so ComfyUI executes this path. Connected images take precedence over file imports.
+The same proportional warp applies to every batch image, including new upstream
+images on later runs. Disconnect IMAGE before loading a file in the editor.
+
+Output retains the original dimensions, up to 64 megapixels per image. Only the
+interactive preview is reduced to a 1536-pixel maximum edge. The backend replays
+the strokes against the original pixels at full resolution; it does not enlarge
+the preview. Resizing the node enlarges its display. Fine details and colours in
+the reduced preview can differ slightly from the full-resolution output.
+
+Saved workflows contain the original imported file and editable stroke/redo
+history. They remain portable without a separate asset folder. For IMAGE inputs,
+the saved workflow contains a preview and stroke history; keep its upstream
+image source available. Old flattened paintings load unchanged and become the
+source for subsequent editable strokes. The original edits in those older
+paintings cannot be reconstructed.
+
+The MASK output preserves the node's existing **alpha coverage** convention:
+1 means opaque and 0 means transparent; RGB inputs produce an all-one mask.
+Invert it when an inpainting node expects 1 to mean the transparent region.
+Alpha and colour are warped together. This is an image warp, not a mask painter.
+
+Imports are limited to 64 MiB. Large embedded originals can produce large workflow
+files. History supports 2000 strokes / 100,000 points; longer edits can be split
+across connected Liquify nodes. File imports support EXIF orientation and embedded
+colour profiles. Queued rendering checks for cancellation between image strips.
+
+Open the [example workflow](../examples/liquify.json) for a portable image and a
+saved editable warp connected to Preview Image.
+
+
 ## Load LoRA Masked
 
 

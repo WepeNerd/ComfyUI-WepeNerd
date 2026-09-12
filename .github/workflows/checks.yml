@@ -29,4 +29,5 @@ jobs:
       - name: Frontend syntax
         run: |
           if [ -d js ]; then find js -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -r -n1 node --check; fi
+      - run: node --test tests/test_liquify_warp.mjs
       - run: git diff --check
