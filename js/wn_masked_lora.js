@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
+import { executionId, imageAncestors, upstreamNodes } from "./mask_input.mjs";
 
 const NODE = "WepeNerdLoadLoraMasked";
 const style = document.createElement("style");
@@ -36,7 +37,7 @@ function readReference(reference) {
         type: reference.asset.type,
     })}`));
 }
-export function setupMaskedLora(node) {
+export function setupMaskedLora(node, { maskOnly = false } = {}) {
     const data = node.widgets.find(w => w.name === "mask_data");
     Object.assign(data, { type: "wn_hidden", computeSize: () => [0, -4], draw() {}, mouse: () => false });
     node.properties ||= {};
@@ -64,7 +65,8 @@ export function setupMaskedLora(node) {
             ctx.restore();
         };
     }
-    let saved = node.properties.wnMask || { v: 1, open: false, brush: 60, reference: null };
+    let saved = node.properties.wnMask || { v: 1, open: maskOnly, brush: 60, reference: null };
+    let hasPaint = false;
     let reference = null, busy = false, removed = false, restoring = false;
     let gesture = null, pointer = null, pending = null, upstreamArmed = false;
     let history = [];
@@ -73,7 +75,7 @@ export function setupMaskedLora(node) {
     const mctx = mask.getContext("2d", { willReadFrequently: true });
     const root = element("div", "wn-mask-editor");
     root.tabIndex = 0;
-    root.setAttribute("aria-label", "Masked LoRA editor");
+    root.setAttribute("aria-label", maskOnly ? "Paint Mask editor" : "Masked LoRA editor");
     const row = element("button", "wn-mask-row wn-mask-fold");
     row.setAttribute("aria-expanded", "false");
     const thumb = element("canvas");
@@ -107,7 +109,7 @@ export function setupMaskedLora(node) {
     const undo = iconButton("Undo", "undo-2");
     const clear = iconButton("Clear mask", "trash-2");
     const source = element("button");
-    source.title = "Load a snapshot of the first image in the connected batch. Never runs downstream nodes.";
+    source.title = maskOnly ? "Run the connected upstream path and load its first image. Never runs downstream nodes." : "Load a snapshot of the first image in the connected batch. Never runs downstream nodes.";
     toolbar.append(brush, rectangle, eraser, size, undo, clear);
     const sourceRow = element("div", "wn-mask-row wn-mask-between");
     const sourceState = element("span", "wn-mask-note");
@@ -124,7 +126,7 @@ export function setupMaskedLora(node) {
     const hint = element("span", "wn-mask-hint"); hint.textContent = "Drop image or paint here";
     stage.append(canvas, hint);
     const dimensions = element("div", "wn-mask-note");
-    dimensions.title = "The mask maps proportionally to the output image grid. A blank square mask stretches on non-square outputs. Load an image with the intended aspect ratio for aligned painting.";
+    dimensions.title = maskOnly ? "MASK output uses these exact dimensions. Painted areas are white (1); untouched areas are black (0)." : "The mask maps proportionally to the output image grid. A blank square mask stretches on non-square outputs. Load an image with the intended aspect ratio for aligned painting.";
     const note = element("div", "wn-mask-note"); note.setAttribute("role", "status");
     const footer = element("div", "wn-mask-row wn-mask-between"); footer.append(dimensions, removeRef);
     body.append(toolbar, sourceRow, decision, stage, footer);
@@ -137,11 +139,17 @@ export function setupMaskedLora(node) {
     dom.options.getMaxHeight = () => height;
 
     function linked() { return node.inputs?.find(i => i.name === "image")?.link != null; }
-    function painted() { return Boolean(data.value); }
+    function painted() { return maskOnly ? hasPaint : Boolean(data.value); }
     function remember() {
         const changed = Object.keys(saved).some(key => saved[key] !== node.properties.wnMask?.[key]);
         node.properties.wnMask = { ...saved };
+        if (maskOnly && data.value) {
+            const document = JSON.parse(data.value);
+            document.source = saved.reference?.asset || "";
+            data.value = JSON.stringify(document);
+        }
         if (changed) node.graph?.change();
+        if (maskOnly && !restoring) app.extensionManager?.workflow?.activeWorkflow?.changeTracker?.captureCanvasState();
     }
     function fit() {
         body.hidden = !saved.open;
@@ -157,7 +165,9 @@ export function setupMaskedLora(node) {
     }
     function message(text) { note.textContent = text; fit(); }
     function refresh() {
-        state.textContent = painted() ? "Painted" : "Empty";
+        const maskLinked = node.inputs?.find(i => i.name === "mask")?.link != null;
+        state.textContent = maskLinked ? "Using MASK input" : (painted() ? "Painted" : "Empty");
+        state.title = maskLinked ? "Disconnect MASK to use the saved painting." : "";
         dimensions.textContent = `${mask.width} × ${mask.height} px`;
         source.textContent = linked() ? (upstreamArmed ? "Run upstream" : "Load input") : "Open image";
         source.disabled = busy;
@@ -175,9 +185,10 @@ export function setupMaskedLora(node) {
         const bytes = mctx.getImageData(0, 0, mask.width, mask.height).data;
         let any = false;
         for (let i = 3; i < bytes.length; i += 4) if (bytes[i]) { any = true; break; }
-        // Empty rasters retain dimensions in workflow properties without affecting inference.
+        hasPaint = any;
+        // Standalone masks retain their exact dimensions even after Clear.
         saved.width = mask.width; saved.height = mask.height;
-        data.value = any ? JSON.stringify({ v: 1, width: mask.width, height: mask.height, png: mask.toDataURL("image/png") }) : "";
+        data.value = any || maskOnly ? JSON.stringify({ v: 1, width: mask.width, height: mask.height, png: mask.toDataURL("image/png"), ...(!any ? { empty: true } : {}) }) : "";
         remember(); node.graph?.change(); refresh();
     }
     function snapshot() { return { png: mask.toDataURL("image/png"), width: mask.width, height: mask.height, reference: saved.reference }; }
@@ -305,6 +316,12 @@ export function setupMaskedLora(node) {
     }
     replace.onclick = () => { const action = pending; pending = null; decision.hidden = true; action?.(); };
     cancel.onclick = () => { pending = null; decision.hidden = true; fit(); };
+    async function uploadReference(blob) {
+        const form = new FormData(); form.append("image", blob, `mask-reference-${crypto.randomUUID()}.png`); form.append("subfolder", maskOnly ? "wepenerd_paint_mask" : "wepenerd_masked_lora"); form.append("type", "input");
+        const response = await api.fetchApi("/upload/image", { method: "POST", body: form });
+        if (!response.ok) throw new Error("Could not save reference image; existing painting was kept.");
+        return response.json();
+    }
     async function importImage(blob, sourceName = "Dropped / opened image") {
         if (busy || pending) return;
         busy = true; refresh();
@@ -314,10 +331,7 @@ export function setupMaskedLora(node) {
             const raster = element("canvas"); raster.width = bitmap.width; raster.height = bitmap.height;
             raster.getContext("2d").drawImage(bitmap, 0, 0); bitmap.close();
             const upload = await new Promise(resolve => raster.toBlob(resolve, "image/png"));
-            const form = new FormData(); form.append("image", upload, `mask-reference-${crypto.randomUUID()}.png`); form.append("subfolder", "wepenerd_masked_lora"); form.append("type", "input");
-            const response = await api.fetchApi("/upload/image", { method: "POST", body: form });
-            if (!response.ok) throw new Error("Could not save reference image; existing painting was kept.");
-            const asset = await response.json();
+            const asset = await uploadReference(upload);
             const reference = { asset, source: sourceName };
             await adopt(await readReference(reference), reference);
         } catch (error) { message(error.message); }
@@ -336,38 +350,35 @@ export function setupMaskedLora(node) {
     node.onDragOver = () => true;
 
     async function loadInput() {
+        if (busy || pending || restoring) return;
         if (!linked()) { file.click(); return; }
         const link = node.graph.links[node.inputs.find(i => i.name === "image").link];
-        const output = app.nodeOutputs?.[link.origin_id];
-        if (output?.images?.[0] && !upstreamArmed) {
-            const response = await api.fetchApi(`/view?${new URLSearchParams(output.images[0])}`);
-            if (!response.ok) throw new Error("Upstream preview is unavailable. Run upstream to load image.");
-            await importImage(await response.blob(), "Input image"); return;
+        const cached = node.graph === (app.rootGraph || app.graph) ? app.nodeOutputs?.[link?.origin_id] : null;
+        if (!maskOnly && cached?.images?.[0] && !upstreamArmed) {
+            const response = await api.fetchApi(`/view?${new URLSearchParams(cached.images[0])}`);
+            if (response.ok) { await importImage(await response.blob(), "Input image"); return; }
         }
-        if (!upstreamArmed) { upstreamArmed = true; message("Run upstream to load image (first image of batch)."); refresh(); return; }
-        const { output: full } = await app.graphToPrompt();
-        const subset = {}, visiting = new Set();
-        function visit(id) {
-            id = String(id);
-            if (id === String(node.id) || visiting.has(id)) throw new Error("IMAGE creates a cycle through this MODEL chain. Use a saved image.");
-            if (subset[id]) return;
-            if (!full[id]) throw new Error("Upstream image source is unavailable.");
-            visiting.add(id);
-            for (const value of Object.values(full[id].inputs)) if (Array.isArray(value) && value.length === 2 && full[String(value[0])]) visit(value[0]);
-            visiting.delete(id); subset[id] = full[id];
+        if (!maskOnly && !upstreamArmed) { upstreamArmed = true; message("Run upstream to load image (first image of batch)."); refresh(); return; }
+        busy = true; refresh();
+        let { output: full } = await app.graphToPrompt();
+        const id = executionId(node, app.rootGraph || app.graph);
+        let { input, output: subset } = imageAncestors(full, id);
+        const ancestors = maskOnly ? upstreamNodes(app.rootGraph || app.graph, subset) : [];
+        for (const ancestor of ancestors) for (const widget of ancestor.widgets || []) await widget.beforeQueued?.({ isPartialExecution: true });
+        if (ancestors.length) {
+            ({ output: full } = await app.graphToPrompt());
+            ({ input, output: subset } = imageAncestors(full, id));
         }
-        visit(link.origin_id);
         const sink = `wn_mask_snapshot_${crypto.randomUUID()}`;
-        subset[sink] = { class_type: "WN_MaskedLoraSnapshot", inputs: { image: [String(link.origin_id), link.origin_slot] } };
+        subset[sink] = { class_type: "WN_MaskedLoraSnapshot", inputs: { image: input } };
         busy = true; refresh();
         let promptId;
         const done = async event => {
             if (String(event.detail.node) !== sink || removed) return;
             cleanup(); busy = false;
             try {
-                const response = await api.fetchApi(`/view?${new URLSearchParams(event.detail.output.images[0])}`);
-                if (!response.ok) throw new Error("Could not read upstream snapshot.");
-                await importImage(await response.blob(), "Input image");
+                const reference = { asset: event.detail.output.images[0], source: "Input image" };
+                await adopt(await readReference(reference), reference);
             } catch (error) { message(error.message); }
             upstreamArmed = false; refresh();
         };
@@ -379,13 +390,27 @@ export function setupMaskedLora(node) {
         pendingCleanup = cleanup;
         api.addEventListener("executed", done); api.addEventListener("execution_error", failed); api.addEventListener("execution_interrupted", failed);
         try {
+            message("Loading upstream image…");
             const queued = await api.queuePrompt(0, { output: subset, workflow: { nodes: [], links: [] } });
             promptId = queued.prompt_id;
-            message("Loading upstream image…");
+            for (const ancestor of ancestors) for (const widget of ancestor.widgets || []) widget.afterQueued?.({ isPartialExecution: true });
         } catch (error) { cleanup(); busy = false; refresh(); throw error; }
     }
     let pendingCleanup = null;
-    source.onclick = () => loadInput().catch(error => message(error.message));
+    source.onclick = () => loadInput().catch(error => { busy = false; refresh(); message(error.message); });
+    if (maskOnly) {
+        const oldExecuted = node.onExecuted;
+        node.onExecuted = function(output) {
+            oldExecuted?.apply(this, arguments);
+            const asset = output?.paint_mask_source?.[0];
+            if (!asset || removed || !linked() || busy || pending || gesture) return;
+            if (saved.reference?.asset?.filename === asset.filename) return;
+            void readReference({ asset }).then(image => {
+                if (removed || !linked() || busy || pending || gesture) return;
+                return adopt(image, { asset, source: "Input image" });
+            }).catch(error => message(error.message));
+        };
+    }
     const oldConnections = node.onConnectionsChange;
     node.onConnectionsChange = function(...args) { oldConnections?.apply(this, args); upstreamArmed = false; refresh(); };
     const oldResize = node.onResize;
@@ -402,22 +427,32 @@ export function setupMaskedLora(node) {
     async function hydrate() {
         restoring = true;
         try {
-            saved = { v: 1, open: false, brush: 60, ...node.properties.wnMask };
+            saved = { v: 1, open: maskOnly, brush: 60, ...node.properties.wnMask };
             size.value = saved.brush;
             const maskData = data.value ? JSON.parse(data.value) : null;
+            hasPaint = Boolean(maskData && !maskData.empty);
             mask.width = maskData?.width || saved.width || 1024; mask.height = maskData?.height || saved.height || 1024;
             if (maskData) mctx.drawImage(await readImage(maskData.png), 0, 0);
+            if (maskOnly && !saved.reference && maskData?.source) saved.reference = typeof maskData.source === "string"
+                ? { png: maskData.source, source: "Saved image" } : { asset: maskData.source, source: "Saved image" };
             reference = await readReference(saved.reference);
-            if (saved.reference?.png && saved.reference.asset) {
+            if (saved.reference?.png) {
                 const { png, ...stored } = saved.reference;
-                // Migrate embedded previews only after verifying the uploaded copy exists.
+                // Drop embedded bytes only after verifying or restoring the saved asset.
                 try {
+                    if (!stored.asset) throw new Error("No saved asset");
                     reference = await readReference(stored);
-                    saved.reference = stored;
-                    remember();
-                } catch { /* Keep the embedded image if the workflow moved to another server. */ }
+                } catch {
+                    const response = await fetch(png);
+                    stored.asset = await uploadReference(await response.blob());
+                    reference = await readReference(stored);
+                }
+                saved.reference = stored;
+                remember();
             }
+            if (maskOnly) serializeMask();
             history = []; refresh(); fit();
+            if (maskOnly) { restoring = false; remember(); }
         } catch (error) { message(`Cannot restore mask: ${error.message}`); }
         finally { restoring = false; }
     }
@@ -427,8 +462,8 @@ export function setupMaskedLora(node) {
 app.registerExtension({
     name: "wepenerd.masked_lora",
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (nodeData.name !== NODE) return;
+        if (nodeData.name !== NODE && nodeData.name !== "WN_PaintMask") return;
         const created = nodeType.prototype.onNodeCreated;
-        nodeType.prototype.onNodeCreated = function(...args) { created?.apply(this, args); setupMaskedLora(this); };
+        nodeType.prototype.onNodeCreated = function(...args) { created?.apply(this, args); setupMaskedLora(this, { maskOnly: nodeData.name === "WN_PaintMask" }); };
     },
 });

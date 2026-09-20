@@ -75,6 +75,8 @@ class RegionContext:
 
     def __call__(self, executor, x, timesteps, context, attention_mask=None,
                  ref_latents=None, transformer_options=None, **kwargs):
+        import comfy.utils
+
         model = executor.class_obj
         # Native Krea2 also receives still images as [B, C, 1, H, W].
         if not (x.ndim == 4 or (x.ndim == 5 and x.shape[2] == 1)):
@@ -93,6 +95,7 @@ class RegionContext:
             raise ValueError("Load LoRA Masked cannot combine with patches that change input tokens.")
         mask = F.interpolate(self.mask, size=(h, w), mode="bilinear", align_corners=False)
         mask = mask.flatten(2).transpose(1, 2).to(device=x.device, dtype=x.dtype)
+        mask = comfy.utils.repeat_to_batch_size(mask, x.shape[0])
         token = self.current.set((context.shape[1], h * w, refs, mask))
         try:
             return executor(x, timesteps, context, attention_mask, ref_latents, transformer_options or {}, **kwargs)
@@ -187,7 +190,7 @@ def validate_adapter(adapter, module, key):
 class WepeNerdLoadLoraMasked:
     DESCRIPTION = "Krea2 with native floating-point or INT8 ConvRot weights (Load Diffusion Model). Paint where the spatial LoRA contribution applies. Empty mask = no effect. Text/modulation layers are omitted; indirect effects can spread outside the mask."
     CATEGORY = "WepeNerd/Loaders"
-    RETURN_TYPES = ("MODEL",)
+    RETURN_TYPES = ("MODEL", "MASK")
     FUNCTION = "load"
 
     @classmethod
@@ -199,13 +202,16 @@ class WepeNerdLoadLoraMasked:
             "lora_name": (folder_paths.get_filename_list("loras"),),
             "strength": ("FLOAT", {"default": 1.0, "min": -20.0, "max": 20.0, "step": 0.01}),
             "mask_data": ("STRING", {"default": "", "multiline": False}),
-        }, "optional": {"image": ("IMAGE", {"lazy": True})}, "hidden": {"unique_id": "UNIQUE_ID"}}
+        }, "optional": {
+            "image": ("IMAGE", {"lazy": True}),
+            "mask": ("MASK", {"tooltip": "Overrides the painted mask when connected. Also returned through the MASK output."}),
+        }, "hidden": {"unique_id": "UNIQUE_ID"}}
 
     def check_lazy_status(self, **kwargs):
         # The editor acquires IMAGE explicitly using the private snapshot sink.
         return []
 
-    def load(self, model, lora_name, strength, mask_data="", image=None, unique_id=""):
+    def load(self, model, lora_name, strength, mask_data="", image=None, unique_id="", mask=None):
         import comfy.lora
         import comfy.lora_convert
         import comfy.model_base
@@ -219,10 +225,19 @@ class WepeNerdLoadLoraMasked:
             raise ValueError("Load LoRA Masked requires a native Krea2 MODEL.")
         if not math.isfinite(strength):
             raise ValueError("Load LoRA Masked: strength must be finite.")
-        mask, mask_hash = decode_mask(mask_data)
+        if mask is None:
+            mask, mask_hash = decode_mask(mask_data)
+        else:
+            if mask.ndim not in (2, 3) or any(size == 0 for size in mask.shape):
+                raise ValueError("Load LoRA Masked: MASK input must have shape [batch, height, width] or [height, width].")
+            mask = mask.detach().to(device="cpu", dtype=torch.float32, copy=True)
+            mask = mask.reshape(-1, 1, *mask.shape[-2:])
+            digest = hashlib.sha256(str(tuple(mask.shape)).encode())
+            digest.update(mask.numpy().tobytes())
+            mask_hash = digest.hexdigest()
         result = model.clone()
         if strength == 0 or not torch.any(mask):
-            return (result,)
+            return (result, mask.squeeze(1).clone())
         if lora_name not in folder_paths.get_filename_list("loras"):
             raise ValueError("Load LoRA Masked: choose a LoRA from the installed list.")
         path = folder_paths.get_full_path_or_raise("loras", lora_name)
@@ -255,7 +270,7 @@ class WepeNerdLoadLoraMasked:
         result.set_attachments("wepenerd_masked_lora_" + identity, descriptor)
         result.add_wrapper_with_key(comfy.patcher_extension.WrappersMP.DIFFUSION_MODEL, "wepenerd_masked_lora_" + str(unique_id), region)
         save_asset(Image.fromarray((mask[0, 0].numpy() * 255).astype(np.uint8)))
-        return (result,)
+        return (result, mask.squeeze(1).clone())
 
 
 class WN_MaskedLoraSnapshot:

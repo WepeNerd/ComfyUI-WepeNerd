@@ -173,6 +173,40 @@ Open the [example workflow](../examples/liquify.json) for a portable image and a
 saved editable warp connected to Preview Image.
 
 
+## Paint Mask
+
+**Category:** `WepeNerd/Image` · **Outputs:** `MASK`, `IMAGE`.
+
+Open or drop an image, then paint with the same brush, rectangle, eraser, brush
+size, Undo and Clear controls as Load LoRA Masked. The editor opens expanded.
+Connect MASK downstream and Queue: painted pixels are 1 (white), untouched pixels
+are 0 (black), with antialiased edges. The magenta overlay is only a preview.
+For an opened file, output uses its exact oriented dimensions; Clear keeps those
+dimensions. IMAGE returns the original RGB image without the mask overlay.
+Without an image, the canvas and IMAGE output are black at 1024 × 1024.
+
+For a connected **image**, **Load input** queues its upstream path to load the
+first batch image, even when a preview is already available. Upstream seed controls
+follow their normal randomize/increment/fixed settings; ComfyUI may reuse unchanged
+cached results. Reroutes and bypassed nodes are
+resolved through ComfyUI's execution graph. Load input never runs downstream nodes.
+Normal Queue runs refresh the editor preview and pass the entire connected IMAGE
+batch through unchanged. The same painted mask is resized proportionally to the
+connected image dimensions and repeated across the batch. The node can run as a
+preview without a downstream output node attached.
+
+Different-size image replacements ask before clearing a painting; same-size
+replacements keep it. Undo also restores Clear and image replacements. Use the
+node's **Open reference image…** menu to open a file while IMAGE is connected.
+Removing the reference leaves the mask and its dimensions intact.
+
+Saved workflows contain the mask and editor settings, with small file references
+for source images instead of embedded base64 copies. Existing embedded references
+migrate when opened, after the asset is verified or restored. Copy
+`ComfyUI/input/wepenerd_paint_mask` and `ComfyUI/input/wepenerd_masked_lora` with
+workflows when moving machines. Undo history is limited to 20 actions / 64 MiB
+and lasts for the current editing session.
+
 ## Load LoRA Masked
 
 
@@ -188,6 +222,14 @@ Connect MODEL, choose an installed LoRA and set strength (negative values are su
 Open **Edit mask** and paint with the brush, rectangle or eraser. Empty masks have no
 effect. The magenta overlay is a fixed 45% display preview; painted interiors apply
 the full selected strength. Undo restores a whole gesture, image replacement or Clear.
+
+Connect the optional **mask** input to use a mask from another node instead of the
+saved painting. Disconnect it to use the painting again. Mask batches repeat or
+truncate to match the sampling batch, following ComfyUI's mask handling.
+
+The **MASK** output below **MODEL** returns the selected mask at its original
+resolution for other mask nodes. White applies the LoRA, black has no effect;
+the mask is available even when LoRA strength is zero.
 
 Drop/open an image to use its exact oriented dimensions, or paint on the default
 1024 Ã— 1024 blank canvas. Masks map proportionally to the sampled image grid; use a
