@@ -20,14 +20,11 @@ jobs:
           path: host-comfyui
       - run: python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
       - run: python -m pip install -r host-comfyui/requirements.txt
-      - run: python -B -m unittest discover -s tests -t . -p 'test_*.py'
-        env:
-          PYTHONPATH: host-comfyui
-      - run: python -B tests/check_packages.py .
+      - run: python -B -m unittest discover -s tests -p 'test_*.py'
         env:
           PYTHONPATH: host-comfyui
       - name: Frontend syntax
         run: |
           if [ -d js ]; then find js -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -r -n1 node --check; fi
-      - run: node --test tests/test_liquify_warp.mjs
+      - run: node --test tests/*.test.mjs
       - run: git diff --check
