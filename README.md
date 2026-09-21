@@ -7,6 +7,7 @@ Resolution tools, painting and image warping, and spatial LoRA masks for ComfyUI
 | **Drag Resolution** | Set dimensions visually with aspect-ratio and divisor controls |
 | **Resolution Suggest** | Calculate dimensions from a target size or scale factor |
 | **Resize Image Megapixels** | Resize an image batch to a target area without cropping |
+| **Load Video (Upload)** | Sample a video into an IMAGE batch with frame controls and VHS model format presets |
 | **Speedpaint** | Sketch from a blank canvas or imported image and output an IMAGE |
 | **Paint Mask** | Paint a MASK over an uploaded or connected image and pass the IMAGE downstream |
 | **Liquify Image** | Push-warp files or connected IMAGE batches with editable strokes and full-resolution output |
@@ -27,8 +28,8 @@ Using the Python environment that runs ComfyUI:
 python -m pip install -r ComfyUI-WepeNerd/requirements.txt
 ```
 
-Restart ComfyUI and refresh the browser. This pack uses Pillow and numpy, plus
-Torch supplied by ComfyUI. It does not install GPU wheels, models, or external runtimes.
+Restart ComfyUI and refresh the browser. This pack uses Pillow, numpy, and PyAV,
+plus Torch supplied by ComfyUI. It does not install GPU wheels, models, or external runtimes.
 
 ## Quick start
 
@@ -43,6 +44,10 @@ workflow.
 - **Resolution tools:** choose a divisor that matches your model's required
   dimensions. Megapixel resizing retains the whole image, with small aspect changes
   possible from rounding.
+- **Load Video (Upload):** upload/select a video under **WepeNerd/Video** and
+  connect `images` to an IMAGE input. Set frame rate, skip, stride, and cap as
+  needed. Zero frame rate preserves source frames; zero cap loads all selected
+  frames. Format presets can trim the batch; `None` preserves its selected count.
 - **Liquify:** load an image, or connect IMAGE and Queue once to see its preview.
   Drag to warp, use Undo/Redo, then Queue to render at the source resolution.
   Try the [Liquify example](examples/liquify.json).

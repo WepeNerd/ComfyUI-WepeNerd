@@ -1,3 +1,4 @@
 # Torch and ComfyUI are provided by the host; do not install GPU wheels here.
 Pillow
 numpy
+av>=17.0.0

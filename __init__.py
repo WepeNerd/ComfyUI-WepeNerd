@@ -4,6 +4,7 @@ from .resolution_suggest import WN_ResolutionSuggest
 from .drag_resolution import WN_DragResolution
 from .slider_node import WN_Slider
 from .resize_megapixels_node import WN_ResizeMegapixels
+from .load_video_node import WN_LoadVideo
 from .speedpaint_node import WN_Speedpaint
 from .liquify_node import WN_LiquifyImage
 from .paint_mask_node import WN_PaintMask
@@ -17,6 +18,7 @@ NODE_CLASS_MAPPINGS = {
     'WN_DragResolution': WN_DragResolution,
     'WN_Slider': WN_Slider,
     'WN_ResizeMegapixels': WN_ResizeMegapixels,
+    'WN_LoadVideo': WN_LoadVideo,
     'WN_Speedpaint': WN_Speedpaint,
     'WN_LiquifyImage': WN_LiquifyImage,
     'WN_PaintMask': WN_PaintMask,
@@ -28,6 +30,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "WN_DragResolution": "Drag Resolution (WepeNerd)",
     "WN_Slider": "Slider",
     "WN_ResizeMegapixels": "Resize Image Megapixels (WepeNerd)",
+    "WN_LoadVideo": "Load Video (Upload) (WepeNerd)",
     "WN_Speedpaint": "Speedpaint",
     "WN_LiquifyImage": "Liquify Image (WepeNerd)",
     "WN_PaintMask": "Paint Mask (WepeNerd)",

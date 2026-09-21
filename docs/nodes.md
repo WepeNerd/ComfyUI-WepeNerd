@@ -1,5 +1,52 @@
 # Node guide
 
+## Load Video (Upload)
+
+Loads MP4, WebM, MKV, MOV, AVI, M4V, or GIF files from ComfyUI's input folder,
+including subfolders. Uses PyAV (also supplied by current ComfyUI); VHS and a
+separate FFmpeg executable are not required. Codec support depends on PyAV.
+
+| Input | Description |
+|---|---|
+| `video` | Upload/select a video. GIF files can also be placed in the input folder and selected. |
+| `frame_rate` | 0 keeps source frames. A positive FPS samples the video timeline, dropping or repeating frames without interpolation. |
+| `frame_load_cap` | Maximum selected frames; 0 means all. Decoding stops at the cap. |
+| `skip_first_frames` | Frames skipped **after** rate conversion. |
+| `select_every_nth` | Keep every nth frame after skipping; 1 keeps all. |
+| `format` | VHS model dimension and frame-count constraints; default `None`. Does not change the FPS setting. |
+| `custom_width` / `custom_height` | 0/0 preserves source size. Set one to preserve aspect ratio; set both to resize to that shape. Dimensions then round to the preset's nearest multiple. |
+
+Processing order: frame rate → skip → every nth → cap → format trimming.
+For example, rate 10, skip 2, nth 2, and cap 3 selects resampled frames 2, 4,
+and 6, with an output rate of 5 FPS. Positive rates use FFmpeg's standard FPS
+filter with nearest timestamp rounding; source-frame choices can differ from
+VHS's OpenCV loader.
+
+| Format | Dimension multiple | Frame count |
+|---|---|---|
+| None | 1 | Any |
+| AnimateDiff | 8 | Any |
+| Mochi | 16 | 6n+1 |
+| LTXV | 32 | 8n+1 |
+| Hunyuan | 16 | 4n+1 |
+| Cosmos | 16 | 8n+1 |
+| Wan | 8 | 4n+1 |
+| H3 | 32 | 17n+5 |
+
+Presets trim trailing frames to the largest valid count without exceeding the
+cap. Too few frames or a skip beyond the video ends with an explanatory error.
+Preset constraints match the installed VHS presets; choose `None` for other
+model variants or to preserve the exact selected batch.
+
+Outputs: `images` is one RGB float32 IMAGE batch `[frames, height, width, 3]` in
+0–1; `frame_count` is its actual length; `frame_rate` is the requested (or source)
+FPS divided by every nth. Native variable-rate videos retain all selected source
+frames and report an average FPS; set a positive FPS for uniform timing.
+Audio is not extracted. Long or high-resolution batches require RAM for the
+full output (about 24 MiB per 1080p frame); use a cap or smaller dimensions.
+
+---
+
 ## Drag Resolution
 
 

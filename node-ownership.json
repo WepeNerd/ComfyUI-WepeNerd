@@ -6,6 +6,7 @@
     "WN_DragResolution": "drag_resolution",
     "WN_Slider": "slider_node",
     "WN_ResizeMegapixels": "resize_megapixels_node",
+    "WN_LoadVideo": "load_video_node",
     "WN_Speedpaint": "speedpaint_node",
     "WN_LiquifyImage": "liquify_node",
     "WepeNerdLoadLoraMasked": "masked_lora_node",
