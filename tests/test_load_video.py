@@ -32,13 +32,17 @@ finally:
         sys.modules["comfy.model_management"] = original_management
 
 
-def write_video(path, count=30, rate=Fraction(30), width=34, height=18, timestamps=None):
+def write_video(path, count=30, rate=Fraction(30), width=34, height=18, timestamps=None,
+                audio=False, audio_delay=0):
     with av.open(str(path), "w") as container:
         stream = container.add_stream("ffv1", rate=rate)
         stream.width, stream.height = width, height
         stream.pix_fmt = "bgr0"
         stream.time_base = Fraction(1, 1000)
         stream.codec_context.time_base = Fraction(1, 1000)
+        if audio:
+            audio_stream = container.add_stream("pcm_f32le", rate=8000)
+            audio_stream.layout = "stereo"
         for index in range(count):
             pixels = np.full((height, width, 3), (index, 80, 200), dtype=np.uint8)
             frame = av.VideoFrame.from_ndarray(pixels, format="rgb24")
@@ -48,6 +52,19 @@ def write_video(path, count=30, rate=Fraction(30), width=34, height=18, timestam
                 container.mux(packet)
         for packet in stream.encode():
             container.mux(packet)
+        if audio:
+            samples = round(count / rate * 8000)
+            origin = round((timestamps[0] / 1000 if timestamps else 0) * 8000)
+            for offset in range(0, samples, 800):
+                values = np.arange(offset, min(samples, offset + 800), dtype=np.float32) / samples
+                frame = av.AudioFrame.from_ndarray(np.stack((values, -values)), format="fltp", layout="stereo")
+                frame.sample_rate = 8000
+                frame.time_base = Fraction(1, 8000)
+                frame.pts = origin + round(audio_delay * 8000) + offset
+                for packet in audio_stream.encode(frame):
+                    container.mux(packet)
+            for packet in audio_stream.encode():
+                container.mux(packet)
 
 
 class LoadVideoTests(unittest.TestCase):
@@ -75,37 +92,37 @@ class LoadVideoTests(unittest.TestCase):
         torch.testing.assert_close(images[:, 0, 0, 2], torch.full((len(expected),), 200 / 255))
 
     def test_native_frames_and_rgb(self):
-        images, count, rate = self.load()
+        images, count, rate, _audio = self.load()
         self.assertEqual(tuple(images.shape), (30, 18, 34, 3))
         self.assertEqual(count, 30)
         self.assertEqual(rate, 30)
         self.assert_frames(images, list(range(30)))
 
     def test_skip_nth_cap(self):
-        images, count, rate = self.load(skip_first_frames=4, select_every_nth=3, frame_load_cap=5)
+        images, count, rate, _audio = self.load(skip_first_frames=4, select_every_nth=3, frame_load_cap=5)
         self.assert_frames(images, [4, 7, 10, 13, 16])
         self.assertEqual((count, rate), (5, 10))
 
     def test_rate_conversion_then_skip_nth_cap(self):
-        images, count, rate = self.load(frame_rate=10, skip_first_frames=2,
+        images, count, rate, _audio = self.load(frame_rate=10, skip_first_frames=2,
                                        select_every_nth=2, frame_load_cap=3)
         self.assert_frames(images, [7, 13, 19])
         self.assertEqual((count, rate), (3, 5))
 
     def test_upsampling_duplicates_frames(self):
         write_video(self.path, count=4, rate=Fraction(10))
-        images, count, rate = self.load(frame_rate=20)
+        images, count, rate, _audio = self.load(frame_rate=20)
         self.assert_frames(images, [0, 0, 1, 1, 2, 2, 3, 3])
         self.assertEqual((count, rate), (8, 20))
 
     def test_fractional_rate_and_nonzero_origin(self):
         write_video(self.path, count=10, rate=Fraction(10), timestamps=[5000 + i * 100 for i in range(10)])
-        images, count, rate = self.load(frame_rate=2.5)
+        images, count, rate, _audio = self.load(frame_rate=2.5)
         self.assert_frames(images, [1, 5, 9])
         self.assertEqual((count, rate), (3, 2.5))
 
     def test_same_rate_does_not_drop_frames_with_rounded_timestamps(self):
-        images, count, rate = self.load(frame_rate=30)
+        images, count, rate, _audio = self.load(frame_rate=30)
         self.assert_frames(images, list(range(30)))
         self.assertEqual((count, rate), (30, 30))
 
@@ -123,19 +140,19 @@ class LoadVideoTests(unittest.TestCase):
                     container.mux(packet)
             for packet in stream.encode():
                 container.mux(packet)
-        native, count, _ = self.node.load_video(path.name)
+        native, count, _, _audio = self.node.load_video(path.name)
         self.assertEqual(count, 30)
         np.testing.assert_allclose(native[:, 0, 0, 0].numpy() * 255, np.arange(30) * 6, atol=6)
-        sampled, count, _ = self.node.load_video(path.name, frame_rate=30,
+        sampled, count, _, _audio = self.node.load_video(path.name, frame_rate=30,
                                                skip_first_frames=3, select_every_nth=4)
         torch.testing.assert_close(sampled, native[3::4])
         self.assertEqual(count, len(native[3::4]))
 
     def test_variable_rate_uses_presentation_timestamps(self):
         write_video(self.path, count=4, rate=Fraction(10), timestamps=[0, 100, 400, 700])
-        native, _, _ = self.load()
+        native, _, _, _audio = self.load()
         self.assert_frames(native, [0, 1, 2, 3])
-        images, _, _ = self.load(frame_rate=10, frame_load_cap=8)
+        images, _, _, _audio = self.load(frame_rate=10, frame_load_cap=8)
         self.assert_frames(images, [0, 1, 1, 1, 2, 2, 2, 3])
 
     def test_presets(self):
@@ -147,12 +164,12 @@ class LoadVideoTests(unittest.TestCase):
         }
         for preset, shape in expected.items():
             with self.subTest(preset=preset):
-                images, count, _ = self.load(format=preset)
+                images, count, _, _audio = self.load(format=preset)
                 self.assertEqual(tuple(images.shape), (*shape, 3))
                 self.assertEqual(count, shape[0])
 
     def test_cap_never_exceeded_by_preset(self):
-        images, count, _ = self.load(format="Wan", frame_load_cap=8)
+        images, count, _, _audio = self.load(format="Wan", frame_load_cap=8)
         self.assertEqual(count, 5)
         self.assert_frames(images, [0, 1, 2, 3, 4])
         with self.assertRaisesRegex(ValueError, "Increase the cap"):
@@ -160,7 +177,7 @@ class LoadVideoTests(unittest.TestCase):
 
     def test_short_video_and_large_cap(self):
         write_video(self.path, count=3)
-        images, count, _ = self.load(frame_load_cap=100)
+        images, count, _, _audio = self.load(frame_load_cap=100)
         self.assert_frames(images, [0, 1, 2])
         self.assertEqual(count, 3)
         with self.assertRaisesRegex(ValueError, "Too few selected frames"):
@@ -172,11 +189,11 @@ class LoadVideoTests(unittest.TestCase):
                 self.load(frame_rate=rate, skip_first_frames=100)
 
     def test_custom_dimensions(self):
-        images, _, _ = self.load(custom_width=68)
+        images, _, _, _audio = self.load(custom_width=68)
         self.assertEqual(tuple(images.shape[1:]), (36, 68, 3))
-        images, _, _ = self.load(custom_height=36)
+        images, _, _, _audio = self.load(custom_height=36)
         self.assertEqual(tuple(images.shape[1:]), (36, 68, 3))
-        images, _, _ = self.load(custom_width=40, custom_height=24)
+        images, _, _, _audio = self.load(custom_width=40, custom_height=24)
         self.assertEqual(tuple(images.shape[1:]), (24, 40, 3))
 
     def test_file_listing_and_upload(self):
@@ -209,7 +226,7 @@ class LoadVideoTests(unittest.TestCase):
         self.path.rename(self.root / "closed.mkv")
 
     def test_cap_stops_decoding(self):
-        images, count, _ = self.load(frame_load_cap=2)
+        images, count, _, _audio = self.load(frame_load_cap=2)
         self.assert_frames(images, [0, 1])
         self.assertEqual(count, 2)
         self.assertEqual(interrupt.call_count, 4)
@@ -219,6 +236,50 @@ class LoadVideoTests(unittest.TestCase):
                          {"frame_load_cap": -1}, {"select_every_nth": 0}, {"format": "unknown"}):
             with self.subTest(settings=settings), self.assertRaises(ValueError):
                 self.load(**settings)
+
+    def test_audio_output_is_appended_and_missing_track_is_none(self):
+        self.assertEqual(self.node.RETURN_TYPES, ("IMAGE", "INT", "FLOAT", "AUDIO"))
+        self.assertIsNone(self.load()[3])
+
+    def test_audio_can_be_disabled_without_decoding(self):
+        write_video(self.path, audio=True)
+        with patch.object(video, "load_audio_segment") as decode:
+            self.assertIsNone(self.load(load_audio=False)[3])
+        decode.assert_not_called()
+
+    def test_audio_matches_skip_stride_and_cap(self):
+        write_video(self.path, count=10, rate=Fraction(10), audio=True)
+        _, count, rate, audio = self.load(frame_rate=10, skip_first_frames=2,
+                                         select_every_nth=2, frame_load_cap=3)
+        self.assertEqual((count, rate), (3, 5))
+        self.assertEqual(audio["sample_rate"], 8000)
+        self.assertEqual(tuple(audio["waveform"].shape), (1, 2, 4800))
+        expected = np.arange(1600, 6400, dtype=np.float32) / 8000
+        np.testing.assert_allclose(audio["waveform"][0, 0].numpy(), expected)
+        np.testing.assert_allclose(audio["waveform"][0, 1].numpy(), -expected)
+
+    def test_audio_uses_final_preset_trimmed_count(self):
+        write_video(self.path, count=10, rate=Fraction(10), audio=True)
+        _, count, _, audio = self.load(format="Wan", frame_load_cap=8)
+        self.assertEqual(count, 5)
+        self.assertEqual(audio["waveform"].shape[-1], 4000)
+
+    def test_audio_respects_video_timestamp_origin(self):
+        write_video(self.path, count=10, rate=Fraction(10), audio=True,
+                    timestamps=[5000 + i * 100 for i in range(10)])
+        for frame_rate in (0, 10):
+            with self.subTest(frame_rate=frame_rate):
+                _, _, _, audio = self.load(frame_rate=frame_rate, skip_first_frames=2, frame_load_cap=3)
+                expected = np.arange(1600, 4000, dtype=np.float32) / 8000
+                np.testing.assert_allclose(audio["waveform"][0, 0].numpy(), expected)
+
+    def test_audio_delay_is_preserved_with_silence(self):
+        write_video(self.path, count=10, rate=Fraction(10), audio=True, audio_delay=0.25)
+        audio = self.load(frame_load_cap=5)[3]
+        self.assertEqual(tuple(audio["waveform"].shape), (1, 2, 4000))
+        self.assertFalse(audio["waveform"][:, :, :2000].any())
+        np.testing.assert_allclose(audio["waveform"][0, 0, 2000:].numpy(),
+                                   np.arange(2000, dtype=np.float32) / 8000)
 
 
 if __name__ == "__main__":

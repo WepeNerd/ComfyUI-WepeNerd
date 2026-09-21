@@ -7,7 +7,7 @@ Resolution tools, painting and image warping, and spatial LoRA masks for ComfyUI
 | **Drag Resolution** | Set dimensions visually with aspect-ratio and divisor controls |
 | **Resolution Suggest** | Calculate dimensions from a target size or scale factor |
 | **Resize Image Megapixels** | Resize an image batch to a target area without cropping |
-| **Load Video (Upload)** | Sample a video into an IMAGE batch with frame controls and VHS model format presets |
+| **Load Video (Upload)** | Sample video into an IMAGE batch with frame controls, optional audio, VHS presets, and an autoplaying preview |
 | **Speedpaint** | Sketch from a blank canvas or imported image and output an IMAGE |
 | **Paint Mask** | Paint a MASK over an uploaded or connected image and pass the IMAGE downstream |
 | **Liquify Image** | Push-warp files or connected IMAGE batches with editable strokes and full-resolution output |
@@ -48,6 +48,8 @@ workflow.
   connect `images` to an IMAGE input. Set frame rate, skip, stride, and cap as
   needed. Zero frame rate preserves source frames; zero cap loads all selected
   frames. Format presets can trim the batch; `None` preserves its selected count.
+  The preview autoplays muted. Connect `audio` downstream to keep the selected
+  clip's soundtrack, or disable `load_audio` to skip audio decoding.
 - **Liquify:** load an image, or connect IMAGE and Queue once to see its preview.
   Drag to warp, use Undo/Redo, then Queue to render at the source resolution.
   Try the [Liquify example](examples/liquify.json).

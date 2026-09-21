@@ -80,11 +80,40 @@ def output_size(width, height, custom_width, custom_height, divisor):
     return tuple(max(1, math.floor(size / divisor + 0.5)) * divisor for size in (width, height))
 
 
+def load_audio_segment(path, start_time, duration):
+    """Decode only the selected interval, keeping source channels and sample rate."""
+    with av.open(str(path)) as container:
+        if not container.streams.audio:
+            return None
+        stream = container.streams.audio[0]
+        sample_rate = stream.codec_context.sample_rate
+        start_sample = round(start_time * sample_rate)
+        sample_count = round(duration * sample_rate)
+        waveform = np.zeros((stream.codec_context.channels, sample_count), dtype=np.float32)
+        resampler = av.AudioResampler(format="fltp", layout=stream.codec_context.layout, rate=sample_rate)
+        if start_time > (stream.start_time or 0) * stream.time_base:
+            container.seek(int(start_time / stream.time_base), stream=stream, backward=True)
+        for frame in itertools.chain(container.decode(stream), (None,)):
+            throw_exception_if_processing_interrupted()
+            if frame is not None and frame.is_corrupt:
+                raise ValueError("Video contains corrupt audio.")
+            for samples in resampler.resample(frame):
+                if samples.pts is None:
+                    raise ValueError("Audio has no timestamps; disable load_audio to load images only.")
+                offset = round(samples.pts * samples.time_base * sample_rate) - start_sample
+                if offset >= sample_count:
+                    return {"waveform": torch.from_numpy(waveform).unsqueeze(0), "sample_rate": sample_rate}
+                first, last = max(0, offset), min(sample_count, offset + samples.samples)
+                if last > first:
+                    waveform[:, first:last] = samples.to_ndarray()[:, first - offset:last - offset]
+        return {"waveform": torch.from_numpy(waveform).unsqueeze(0), "sample_rate": sample_rate}
+
+
 class WN_LoadVideo:
     CATEGORY = "WepeNerd/Video"
     FUNCTION = "load_video"
-    RETURN_TYPES = ("IMAGE", "INT", "FLOAT")
-    RETURN_NAMES = ("images", "frame_count", "frame_rate")
+    RETURN_TYPES = ("IMAGE", "INT", "FLOAT", "AUDIO")
+    RETURN_NAMES = ("images", "frame_count", "frame_rate", "audio")
     DESCRIPTION = (
         "Load a video as RGB images. Order: frame rate, skip, every nth, cap, format trimming. "
         "Format presets round dimensions and trim frame counts to VHS model constraints. "
@@ -122,6 +151,9 @@ class WN_LoadVideo:
                 "tooltip": "0 uses source width, or preserves aspect ratio if only height is set."}),
             "custom_height": ("INT", {"default": 0, "min": 0, "max": 16384,
                 "tooltip": "0 uses source height, or preserves aspect ratio if only width is set."}),
+        }, "optional": {
+            "load_audio": ("BOOLEAN", {"default": True,
+                "tooltip": "Output audio for the selected clip. Disable to skip audio decoding. Returns no audio if the file has no audio track."}),
         }}
 
     @classmethod
@@ -139,7 +171,8 @@ class WN_LoadVideo:
         return (str(path), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
 
     def load_video(self, video, frame_rate=0, frame_load_cap=0, skip_first_frames=0,
-                   select_every_nth=1, format="None", custom_width=0, custom_height=0):
+                   select_every_nth=1, format="None", custom_width=0, custom_height=0,
+                   load_audio=True):
         path = video_path(video)
         if not math.isfinite(frame_rate) or frame_rate < 0:
             raise ValueError("Frame rate must be finite and nonnegative.")
@@ -161,6 +194,7 @@ class WN_LoadVideo:
             source_rate = stream.average_rate or stream.guessed_rate
             if source_rate is None or source_rate <= 0:
                 raise ValueError("Could not determine the video's frame rate.")
+            source_start = (stream.start_time or 0) * stream.time_base
             frames = itertools.islice(timed_frames(container, stream, frame_rate),
                                       skip_first_frames, None, select_every_nth)
             if cap:
@@ -168,6 +202,9 @@ class WN_LoadVideo:
             first = next(frames, None)
             if first is None:
                 raise ValueError("No frames selected. Reduce skip_first_frames or choose another video.")
+            audio_start = first.pts * first.time_base if first.pts is not None else source_start + skip_first_frames / source_rate
+            if frame_rate:
+                audio_start += source_start
             rotation = first.rotation
             width, height = first.width, first.height
             if rotation % 180:
@@ -194,7 +231,9 @@ class WN_LoadVideo:
         if count <= 0:
             raise ValueError(f"Too few selected frames for {format}. Select more frames or use format None.")
         output = torch.from_numpy(images[:count]).to(dtype=torch.float32).div_(255)
-        return (output, count, float(frame_rate or source_rate) / select_every_nth)
+        output_rate = Fraction(str(frame_rate or source_rate)) / select_every_nth
+        audio = load_audio_segment(path, audio_start, count / output_rate) if load_audio else None
+        return (output, count, float(output_rate), audio)
 
 
 NODE_CLASS_MAPPINGS = {"WN_LoadVideo": WN_LoadVideo}

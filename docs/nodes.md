@@ -15,6 +15,12 @@ separate FFmpeg executable are not required. Codec support depends on PyAV.
 | `select_every_nth` | Keep every nth frame after skipping; 1 keeps all. |
 | `format` | VHS model dimension and frame-count constraints; default `None`. Does not change the FPS setting. |
 | `custom_width` / `custom_height` | 0/0 preserves source size. Set one to preserve aspect ratio; set both to resize to that shape. Dimensions then round to the preset's nearest multiple. |
+| `load_audio` | Enabled by default. Decode the selected clip's audio; disable for image-only workflows. |
+
+The source-video preview autoplays muted and loops when a video is selected or
+the workflow is reopened. Use its controls to pause or unmute. It previews the
+original file, not the sampled output batch; browser codec support determines
+which files can play inline.
 
 Processing order: frame rate → skip → every nth → cap → format trimming.
 For example, rate 10, skip 2, nth 2, and cap 3 selects resampled frames 2, 4,
@@ -42,7 +48,15 @@ Outputs: `images` is one RGB float32 IMAGE batch `[frames, height, width, 3]` in
 0–1; `frame_count` is its actual length; `frame_rate` is the requested (or source)
 FPS divided by every nth. Native variable-rate videos retain all selected source
 frames and report an average FPS; set a positive FPS for uniform timing.
-Audio is not extracted. Long or high-resolution batches require RAM for the
+The `audio` output uses ComfyUI's standard AUDIO format and preserves source
+sample rate and channels. It starts at the selected video interval and spans
+`frame_count / frame_rate` seconds after preset trimming. Audio remains at its
+original speed; every-nth selection reduces the output FPS accordingly. Missing
+audio at the interval's edges is padded with silence. A file without an audio
+track, or a disabled `load_audio`, returns `None`. Connect `audio` to a video
+combine/save node's audio input or to Preview Audio when a track is available.
+
+Long or high-resolution batches require RAM for the
 full output (about 24 MiB per 1080p frame); use a cap or smaller dimensions.
 
 ---
