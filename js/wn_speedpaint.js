@@ -108,12 +108,11 @@ export function setupSpeedpaint(node) {
     node.properties ||= {};
     const defaults = { colour: "#24232b", background: "#e8e6e1", size: 32, opacity: 100, shape: "round", erasing: false, pressure: true, local: [1024, 1024] };
     let settings = { ...defaults, ...clone(node.properties.speedpaint || {}) };
-    let doc = null, derived = null, removed = false, busy = 0, revision = 0;
+    let doc = null, savedDocument = null, derived = null, removed = false, busy = 0, revision = 0;
     let pending = Promise.resolve(), savePromise = null, saveTimer = null, saveError = null;
     let history = [], future = [], historyBytes = 0;
     let stroke = null, cropGesture = null, frame = null, cursorPoint = null, cursorFrame = null;
-    let dirtyPixels = false, recovery = null, recoveryRevision = -1, outlineKey = "";
-    let recoveryStroke = null, recoveryStrokeVersion = -1;
+    let dirtyPixels = false, outlineKey = "";
     let boundsTime = null, bounds = null;
     const abort = new AbortController();
     let executionId = null, previewToken = 0;
@@ -199,7 +198,7 @@ export function setupSpeedpaint(node) {
         if (!removed && belongsToGraph(node, app.rootGraph || app.graph)) app.extensionManager.workflow.activeWorkflow?.changeTracker?.captureCanvasState();
     }
     function sync() {
-        revision++; previewToken++; recovery = null; recoveryRevision = -1; recoveryStroke = null;
+        revision++; previewToken++;
         data.value = JSON.stringify(doc);
         saveError = null; node.setDirtyCanvas(true, true); refresh();
         if (belongsToGraph(node, app.rootGraph || app.graph)) {
@@ -211,18 +210,6 @@ export function setupSpeedpaint(node) {
         doc = { ...doc, width: canvas.width, height: canvas.height };
         delete doc.inline; dirtyPixels = true;
         sync(); scheduleSave();
-    }
-    function serializedDocument() {
-        if (stroke) {
-            if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
-            renderStroke();
-        }
-        if (!dirtyPixels && !stroke?.painted) return JSON.stringify(doc);
-        if (recoveryRevision !== revision || recoveryStroke !== stroke || recoveryStrokeVersion !== stroke?.version) {
-            recovery = backing.toDataURL("image/png"); recoveryRevision = revision;
-            recoveryStroke = stroke; recoveryStrokeVersion = stroke?.version;
-        }
-        return JSON.stringify({ ...doc, painted: doc.painted || !!stroke?.painted, inline: recovery });
     }
     async function eraseAsset(document, width = document.width, height = document.height) {
         if (!document.source && !document.erase_asset) return null;
@@ -291,7 +278,7 @@ export function setupSpeedpaint(node) {
                 } else body = { document: committed };
                 const result = await request("commit", body, abort.signal);
                 if (!removed && version === revision) {
-                    doc = result; dirtyPixels = false; recovery = null; recoveryRevision = -1; recoveryStroke = null;
+                    doc = result; savedDocument = clone(doc); dirtyPixels = false;
                     data.value = JSON.stringify(doc); saveError = null; track();
                 }
             }
@@ -316,7 +303,7 @@ export function setupSpeedpaint(node) {
     async function replace(next, before = doc) {
         await display(next);
         if (removed) return;
-        doc = next; dirtyPixels = false; derived = null;
+        doc = next; savedDocument = clone(doc); dirtyPixels = false; derived = null;
         pushHistory({ kind: "document", before: clone(before), after: clone(next) }); sync(); track();
     }
     function editingSize() {
@@ -370,6 +357,7 @@ export function setupSpeedpaint(node) {
         const previous = clone(doc);
         doc = { ...doc, asset: derived.asset, erase_asset: derived.erase_asset, width: derived.width, height: derived.height, painted: true };
         delete doc.inline; derived = null;
+        savedDocument = clone(doc);
         pushHistory({ kind: "document", before: previous, after: clone(doc) }); sync();
     }
     function point(event, rect = canvas.getBoundingClientRect()) {
@@ -423,7 +411,6 @@ export function setupSpeedpaint(node) {
         const tiles = ended.finish(cancel);
         if (canvas.hasPointerCapture(ended.pointer)) canvas.releasePointerCapture(ended.pointer);
         if (cancel || !ended.painted) {
-            recovery = null; recoveryRevision = -1; recoveryStroke = null;
             if (dirtyPixels) scheduleSave(); return;
         }
         pushHistory({ kind: "stroke", tiles, paintedBefore: doc.painted });
@@ -526,10 +513,11 @@ export function setupSpeedpaint(node) {
             } else {
                 const next = clone(redo ? entry.after : entry.before); await display(next);
                 if (removed) return;
-                doc = next; dirtyPixels = false; sync(); scheduleSave();
+                doc = next; savedDocument = clone(doc); dirtyPixels = false; sync();
                 dimensions.forEach((widget, i) => {
                     if (!linked(i)) { widget.value = settings.local[i] = doc[i ? "height" : "width"]; }
                 });
+                track();
             }
             from.pop(); to.push(entry); refresh();
         });
@@ -567,7 +555,8 @@ export function setupSpeedpaint(node) {
         checkSize(next.width, next.height);
         await display(next);
         if (removed) return;
-        doc = next; dirtyPixels = false; derived = null; history = []; future = []; historyBytes = 0; sync();
+        doc = next; savedDocument = clone(doc); delete savedDocument.inline;
+        dirtyPixels = false; derived = null; history = []; future = []; historyBytes = 0; sync();
         if (!doc.asset && !doc.inline) capture(); else if (doc.inline) scheduleSave();
     }
     const configured = node.onConfigure;
@@ -580,8 +569,8 @@ export function setupSpeedpaint(node) {
     const serialized = node.onSerialize;
     node.onSerialize = function(info) {
         remember(); serialized?.call(this, info);
-        // Serialization is synchronous in LiteGraph. Keep a lossless recovery PNG until the durable write completes.
-        if (info.widgets_values && doc) info.widgets_values[node.widgets.indexOf(data)] = serializedDocument();
+        // Drafts use localStorage: keep the last durable asset until the next commit updates change tracking.
+        if (info.widgets_values && savedDocument) info.widgets_values[node.widgets.indexOf(data)] = JSON.stringify(savedDocument);
         info.properties.speedpaint = clone(settings);
     };
     const executionStart = event => { executionId = event.detail.prompt_id; };
@@ -609,7 +598,7 @@ export function setupSpeedpaint(node) {
     const onRemoved = node.onRemoved;
     node.onRemoved = function(...args) {
         endStroke(true); endCrop(true); removed = true; hideCursor(); abort.abort(); clearTimeout(saveTimer); observer.disconnect(); editors.delete(editor);
-        history = []; future = []; historyBytes = 0; recovery = null; recoveryStroke = null; doc = null; derived = null;
+        history = []; future = []; historyBytes = 0; doc = null; savedDocument = null; derived = null;
         canvas.width = canvas.height = backing.width = backing.height = eraseBase.width = eraseBase.height = 0; delete node._wnSpeedpaintEditor;
         window.removeEventListener("blur", blur); document.removeEventListener("visibilitychange", visibility);
         api.removeEventListener("execution_start", executionStart); api.removeEventListener("executed", executed);
@@ -654,7 +643,12 @@ export function prepareOperation(original, graphArgument = false) {
 app.registerExtension({
     name: "wepenerd.speedpaint",
     async setup() {
-        if (!promptInstalled) { app.graphToPrompt = prepareOperation(app.graphToPrompt, true); promptInstalled = true; }
+        if (!promptInstalled) {
+            app.graphToPrompt = prepareOperation(app.graphToPrompt, true);
+            app.loadGraphData = prepareOperation(app.loadGraphData);
+            app.loadApiJson = prepareOperation(app.loadApiJson);
+            promptInstalled = true;
+        }
         const saves = new Set(["Comfy.SaveWorkflow", "Comfy.SaveWorkflowAs", "Comfy.ExportWorkflow", "Comfy.ExportWorkflowAPI"]);
         for (const command of app.extensionManager.command.commands) {
             if (saves.has(command.id) && !installedCommands.has(command)) {
