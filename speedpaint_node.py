@@ -195,15 +195,19 @@ class WN_Speedpaint:
             "width": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 1}),
             "height": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 1}),
             "document": ("STRING", {"default": "", "multiline": False, "socketless": True}),
-        }}
+        }, "optional": {"image": ("IMAGE", {"lazy": True})}}
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "render"
     CATEGORY = "WepeNerd/Image"
-    DESCRIPTION = "Sketch on a blank canvas or a loaded image, then send the painting to VAE Encode."
+    DESCRIPTION = "Sketch on a blank canvas or loaded image. Load runs a connected IMAGE upstream, or opens a file picker."
 
-    def render(self, width, height, document=""):
+    def check_lazy_status(self, width, height, document="", image=None):
+        # The editor's Load button queues IMAGE separately; Queue renders the saved painting.
+        return []
+
+    def render(self, width, height, document="", image=None):
         prepared = prepare_image(parse_document(document), width, height)
         asset = store_image(prepared)
         tensor = torch.from_numpy(np.asarray(prepared).astype(np.float32) / 255.0).unsqueeze(0)

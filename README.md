@@ -11,6 +11,10 @@ Resolution tools, painting and image warping, and spatial LoRA masks for ComfyUI
 | **Speedpaint** | Sketch from a blank canvas or imported image and output an IMAGE |
 | **Paint Mask** | Paint a MASK over an uploaded or connected image and pass the IMAGE downstream |
 | **Liquify Image** | Push-warp files or connected IMAGE batches with editable strokes and full-resolution output |
+| **Qwen Edit Measure Drift** | Measure translation or affine drift between a source and an edit |
+| **Qwen Edit Align Composite** | Align an edited image and composite through a supplied or automatic mask |
+| **Qwen Edit Difference Mask + Composite** | Detect visual edits, clean up the difference mask, and preserve source pixels outside it |
+| **Sigma Curve** | Draw a SIGMAS schedule by dragging points on a graph, with presets and exact numeric entry |
 | **Slider** | Map a compact FLOAT control to your preferred strength range |
 | **Load LoRA Masked · Beta** | Apply spatial LoRA/LoKr regions to native Krea2 models |
 
@@ -28,7 +32,7 @@ Using the Python environment that runs ComfyUI:
 python -m pip install -r ComfyUI-WepeNerd/requirements.txt
 ```
 
-Restart ComfyUI and refresh the browser. This pack uses Pillow, numpy, and PyAV,
+Restart ComfyUI and refresh the browser. This pack uses Pillow, numpy, SciPy, and PyAV,
 plus Torch supplied by ComfyUI. It does not install GPU wheels, models, or external runtimes.
 
 ## Quick start
@@ -38,8 +42,11 @@ Suggest controls Speedpaint's width and height; paint and click **Queue** to
 preview the result. Connect Speedpaint to **VAE Encode** to use it in a generation
 workflow.
 
-- **Speedpaint:** choose **New** for a blank background, or **Load** / drop an image.
+- **Speedpaint:** choose **New** for a blank background. **Load** runs a connected
+  `image` upstream and imports its first image; without a connection it opens the
+  file picker. You can also drop an image onto the canvas.
   Use round or square brushes, colour, size, opacity, and pressure-to-size controls.
+  Toggle the eraser (**E**) to restore the loaded image or blank background; **B** returns to painting.
   Ctrl/Cmd+Z undoes; Shift+Ctrl/Cmd+Z redoes; Alt-click samples a colour.
 - **Resolution tools:** choose a divisor that matches your model's required
   dimensions. Megapixel resizing retains the whole image, with small aspect changes
@@ -55,6 +62,11 @@ workflow.
   Try the [Liquify example](examples/liquify.json).
 - **Masked LoRA:** connect a native Krea2 MODEL, select a LoRA, and open **Edit mask**.
   Empty masks have no effect. This node is specific to Krea2 and remains in Beta.
+- **Qwen Edit Align:** find the three nodes under **WepeNerd/Qwen Edit Align**.
+  Connect the original to `source` and the generated edit to `edited` on
+  **Qwen Edit Difference Mask + Composite**. Preview `mask` or `preview`, tune
+  `threshold`, and save `composite`. Pixels where the final mask is zero are
+  copied exactly from the source. See the [controls and limits](docs/nodes.md#qwen-edit-align).
 
 See the [node guide](docs/nodes.md) for controls, inputs, outputs, and limitations.
 

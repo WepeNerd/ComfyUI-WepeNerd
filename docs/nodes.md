@@ -133,6 +133,83 @@ cropping. Supports upscaling and downscaling with ComfyUI's **lanczos** (default
 **bicubic**, **bilinear**, **nearest-exact**, and **area** interpolation.
 
 
+## Qwen Edit Align
+
+**Category:** `WepeNerd/Qwen Edit Align`. These operate on decoded images and
+work with other image editors too. No model patch or RoPE correction is included.
+
+### Qwen Edit Measure Drift
+
+Connect one `source` and one `edited` image. `translation` estimates horizontal
+and vertical drift; `affine` also fits scale, rotation and shear. Positive
+`drift_x_px` means the edited content moved right, positive `drift_y_px` means
+down. Values are in source-image pixels; for affine fits they describe movement
+at the image centre. Connect `warp_params` to Align Composite to reuse the fit.
+Optional `edit_mask` excludes intended changes from registration; white is excluded.
+`ignore_border_px` excludes border artifacts and is reduced for very small images.
+This node reports a single pair; select individual images before measuring a batch.
+
+### Qwen Edit Align Composite
+
+Aligns `edited` to `source`, then composites with `edit_mask` (white selects the
+edit), or a simple threshold mask when no mask is connected. `grow_px` expands
+the mask and `feather_px` softens its boundary. Outputs `composite`, `aligned_edit`,
+`mask`, and reusable `warp_params`. The supplied mask is in source coordinates
+and is also excluded from the alignment fit. Parameters measured at a different
+resolution scale with each axis; use them only for the same image geometry.
+
+### Qwen Edit Difference Mask + Composite
+
+This is the dedicated auto-masker for additions, removals and replacements.
+Connect the original image to `source` and the edited result to `edited`.
+It optionally corrects translation drift, compares the images, cleans up the mask,
+and pastes the selected edited pixels onto the original. Removed objects are
+replaced by the background from the edited image.
+
+| Control | Effect |
+|---|---|
+| `threshold` | Lower detects smaller differences; higher preserves more source pixels. Start at 0.08. |
+| `align_first` | Correct translation before comparison. Enable for shifted edits; disable for already aligned images. |
+| `diff_mode` | Max RGB detects any colour-channel change; luminance compares brightness; chroma compares colour relative to brightness. |
+| `pre_blur_px` | Blur only the comparison images to suppress fine noise; compositing still uses the unblurred edit. |
+| `min_region_px` | Remove connected regions below this area. Set 0 to retain tiny edits. |
+| `fill_holes` | Fill enclosed gaps in the detected regions. Turn off to preserve holes or unchanged interiors. |
+| `grow_px` | Expand the mask, or shrink it with a negative value. Set 0 for the threshold boundary. |
+| `feather_px` | Soften the mask boundary. Set 0 for a hard selection. |
+| `limit_mask` | Optional allowed region in source coordinates; black always preserves source, including after feathering. Also excluded from the alignment fit. |
+
+Outputs: `composite`, `mask`, `preview` (red mask overlay on the source), and
+`difference` (grayscale visual difference scaled around the threshold).
+For affine drift, run Align Composite in `affine` mode first, then compare its
+`aligned_edit` with the original using `align_first=false`.
+
+Both compositors handle matching batches and broadcast a single source, edit or
+mask over a batch. Each pair is aligned separately. Other batch-size mismatches
+raise an error rather than dropping images. Edited images and masks are resized
+to the source dimensions. Outputs are CPU float32; RGB and RGBA are supported.
+If the edit lacks alpha, source alpha is retained before alignment; if the source
+is RGB, edited alpha is discarded. Difference masking also detects alpha changes
+when both images are RGBA.
+
+Pixels where the **final mask is exactly zero** equal the source exactly.
+Feathered pixels blend both images. Growth, blur and hole filling deliberately
+include nearby or enclosed pixels; set them to zero/off for a tighter mask.
+Warped coordinates outside the edited image retain the source. `aligned_edit`
+itself uses replicated border pixels; the compositor's mask excludes these areas.
+
+Registration needs enough unchanged, textured background and assumes the same
+framing. Fits use a pyramid up to a 1024-pixel longest edge, while output warping
+and masks use full source resolution. Flat or fully excluded backgrounds use
+zero drift with a console warning. Large redraws, repeated patterns and local
+deformations can confuse alignment. Difference masking is not semantic object
+segmentation: strong unwanted changes can also be selected, while subtle parts
+of an object can be missed. Inspect the mask and use `limit_mask` or Paint Mask
+when you need a precise allowed edit region. No model download is required.
+
+Validated with synthetic translations, affine transforms, additions/removals,
+batches, mask limits and exact preservation checks. Real Qwen output quality
+still depends on the source/edit pair and the chosen threshold.
+
 ## Slider
 
 
@@ -161,13 +238,21 @@ it does not select or load LoRAs.
 **Category:** `WepeNerd/Image` Â· **Output:** `IMAGE`.
 
 Sketch on a solid background with **New**, or **Load** / drop a PNG, JPEG or WebP
-and paint over it. Width and height accept INT connections and local values
+and paint over it. Connect an upstream `IMAGE` to the optional `image` input and
+press **Load** to run that image's upstream path and import the first image of its
+batch. Each click queues the current upstream settings, without running downstream
+nodes. With no image connected, **Load** opens the file picker. Normal **Queue**
+outputs the saved painting; press **Load** again to replace it from upstream.
+Width and height accept INT connections and local values
 (64â€“4096 pixels, step 1). Imports use an oriented, colour-managed, centered Lanczos
 crop at that exact size. Shift-drag before painting to reposition the crop.
 
-The compact toolbar has round/square brushes, colour with a hex picker, a live
+The compact toolbar has round/square brushes, an eraser, colour with a hex picker, a live
 pixel-size slider, stroke opacity, pen pressure to size, and undo. The size slider
 gives small brushes more travel; its arrow keys and `[` / `]` adjust by one pixel.
+Toggle the eraser button or press **E** to erase paint back to the loaded image
+or original blank background; press **B** to paint again. Erasing uses the same
+shape, size, opacity and pressure controls, and supports undo/redo.
 Alt-click samples colour; Ctrl/Cmd+Z undoes a stroke or canvas operation;
 Ctrl/Cmd+Shift+Z redoes it. Mouse strokes use full brush size. Resize the node to
 enlarge its canvas display without changing image resolution.
@@ -321,3 +406,42 @@ denoising can spread indirect effects beyond the painted area; use final composi
 when exact pixel preservation is needed. Custom INT8 loaders, GGUF, FP8, NVFP4, temporal inputs and patches
 that rearrange input tokens are outside v1 support. Real-model fidelity, generation
 timing and peak VRAM have not been benchmarked.
+
+## Sigma Curve
+
+Draw a noise schedule and output `SIGMAS` for **SamplerCustom**, **SamplerCustomAdvanced**,
+or any node with a `sigmas` input. Find it under **WepeNerd/Sampling**.
+
+The line is the curve; the small dots are the exact sigmas the node outputs, one per
+step. Large dots are control points.
+
+| Action | How |
+|---|---|
+| Add a point | Click anywhere in the graph (keep holding to drag it) |
+| Move a point | Drag it. With **Snap** on, points land on step positions; hold Shift to invert snapping |
+| Delete a point | Right-click, double-click, Alt-click, drag it off the graph, or select it and press Del |
+| Exact values | Select a point and type its `step` or `σ` in the fields under the graph |
+| Nudge | Tab / Shift+Tab selects points; arrows move them (Shift for bigger steps). Esc deselects |
+| Undo / Redo | ↶ ↷ buttons, Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z |
+| Inspect | Hover to read each step's sigma and the next one |
+
+The first and last points are pinned to the start and end of the schedule; you can
+change their height but not remove them.
+
+| Input | Description |
+|---|---|
+| `steps` | Sampling steps. The curve is sampled at evenly spaced step positions, so changing steps keeps the shape |
+| `sigma_max` | Sigma at the top of the graph. Points are stored relative to it, so changing it rescales the curve. Use about 14.61 for SD1.5/SDXL and 1.0 for flow models (Flux, SD3, Wan) |
+| `sigma_min` | Lowest sigma used by presets and the bottom of the **Log** view. It does not clamp the output |
+| `interpolation` | `log smooth` (default) bends in log-sigma space, so exponential/Karras-like curves need few points. `smooth` is a monotone cubic in linear space. `linear` joins points with straight lines. None of them overshoot between points |
+| `end_at_zero` | On: output is `steps` curve values plus a final 0 (ComfyUI's usual layout; shown as a dashed drop at the end). Off: the curve supplies all `steps + 1` values |
+
+**Preset** replaces the curve with a fitted Karras, exponential, poly-exponential,
+linear, Align Your Steps (SDXL), flow shift 3/6, or cosine schedule over
+`sigma_min`–`sigma_max`, and sets a matching interpolation. **Log** changes only the
+view and helps with low-sigma detail. **Copy** puts the output sigmas on the clipboard.
+**Paste** reads a list such as `14.6, 6.3, 3.7, …, 0` and creates one point per value,
+setting `steps`, `sigma_max`, and `sigma_min` to match.
+
+A warning appears in the corner if the schedule rises anywhere; most samplers expect
+sigmas to decrease.

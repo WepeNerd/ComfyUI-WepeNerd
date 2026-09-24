@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add Sigma Curve: a graph editor that outputs SIGMAS for SamplerCustom, with presets,
+  log view, step snapping, numeric point entry, undo/redo, and copy/paste of sigma lists.
+
 ## 0.2.0
 
 - Add Liquify to core with optional IMAGE batch input and full-resolution output.

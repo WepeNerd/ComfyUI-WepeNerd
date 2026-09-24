@@ -6,11 +6,12 @@ for (let i = 1; i < coverageCount.length; i++) coverageCount[i] = coverageCount[
 // Union sixteen subpixel samples per pixel. OR is independent of event/frame
 // batching: revisiting an antialiased edge cannot make a stroke darker.
 export class TileStroke {
-    constructor(canvas, context, point, settings, pointer, sourceCanvas = null) {
+    constructor(canvas, context, point, settings, pointer, sourceCanvas = null, eraseCanvas = null) {
         this.canvas = canvas; this.ctx = context; this.pointer = pointer;
         this.size = settings.size; this.shape = settings.shape;
         this.opacity = settings.opacity / 100;
         this.rgb = [1, 3, 5].map(i => parseInt(settings.colour.slice(i, i + 2), 16));
+        this.erase = eraseCanvas?.getContext('2d', { willReadFrequently: true });
         this.last = point; this.samples = []; this.version = 0; this.tiles = new Map(); this.dirty = new Set();
         this.ownsSource = !sourceCanvas;
         this.original = sourceCanvas || document.createElement('canvas');
@@ -40,6 +41,7 @@ export class TileStroke {
                 const w = Math.min(TILE, this.canvas.width-x), h = Math.min(TILE, this.canvas.height-y);
                 const before = this.source.getImageData(x, y, w, h);
                 tile = {x, y, w, h, before, after: new ImageData(new Uint8ClampedArray(before.data), w, h), coverage: new Uint16Array(w*h), bounds: [w,h,0,0]};
+                if (this.erase) tile.target = this.erase.getImageData(x, y, w, h).data;
                 this.tiles.set(key, tile);
             }
             const x = p.x-tile.x, y = p.y-tile.y;
@@ -81,9 +83,9 @@ export class TileStroke {
             for (let row=0;row<h;row++) for (let column=0;column<w;column++) {
                 const i=(y+row)*tile.w+x+column;
                 const amount = coverageCount[tile.coverage[i]]/16*this.opacity, remaining=1-amount, pixel=i*4;
-                after[pixel] = Math.round(before[pixel]*remaining+this.rgb[0]*amount);
-                after[pixel+1] = Math.round(before[pixel+1]*remaining+this.rgb[1]*amount);
-                after[pixel+2] = Math.round(before[pixel+2]*remaining+this.rgb[2]*amount);
+                after[pixel] = Math.round(before[pixel]*remaining+(tile.target ? tile.target[pixel] : this.rgb[0])*amount);
+                after[pixel+1] = Math.round(before[pixel+1]*remaining+(tile.target ? tile.target[pixel+1] : this.rgb[1])*amount);
+                after[pixel+2] = Math.round(before[pixel+2]*remaining+(tile.target ? tile.target[pixel+2] : this.rgb[2])*amount);
             }
             this.mask.putImageData(tile.after,0,0,x,y,w,h);
             this.source.putImageData(tile.after,tile.x,tile.y,x,y,w,h);

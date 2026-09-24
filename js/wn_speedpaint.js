@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { TileStroke } from "./speedpaint_stroke.mjs";
+import { TileStroke } from "./speedpaint_stroke.mjs?v=eraser-1";
+import { loadConnectedImage } from "./speedpaint_input.mjs?v=eraser-1";
 
 const NODE = "WN_Speedpaint";
 const editors = new Set();
@@ -105,7 +106,7 @@ export function setupSpeedpaint(node) {
     Object.assign(data, { type: "wn_hidden", hidden: true, computeSize: () => [0, -4], draw() {}, mouse: () => false });
     const dimensions = ["width", "height"].map(name => node.widgets.find(w => w.name === name));
     node.properties ||= {};
-    const defaults = { colour: "#24232b", background: "#e8e6e1", size: 32, opacity: 100, shape: "round", pressure: true, local: [1024, 1024] };
+    const defaults = { colour: "#24232b", background: "#e8e6e1", size: 32, opacity: 100, shape: "round", erasing: false, pressure: true, local: [1024, 1024] };
     let settings = { ...defaults, ...clone(node.properties.speedpaint || {}) };
     let doc = null, derived = null, removed = false, busy = 0, revision = 0;
     let pending = Promise.resolve(), savePromise = null, saveTimer = null, saveError = null;
@@ -125,7 +126,7 @@ export function setupSpeedpaint(node) {
     const status = element("span", "sp-status"); status.setAttribute("role", "status");
     const background = element("input"); background.type = "color"; background.title = "Background for New and image import"; background.setAttribute("aria-label", "Background colour");
     const fresh = button("New"), load = button("Load");
-    load.title = "Load or drop PNG, JPEG or WebP. Shift-drag to reposition before painting.";
+    load.title = "Run connected IMAGE upstream and load its first image, or browse files when disconnected. Shift-drag to reposition before painting.";
     setup.append(status, background, fresh, load);
     const stage = element("div", "sp-stage");
     const picture = element("div", "sp-picture");
@@ -133,11 +134,14 @@ export function setupSpeedpaint(node) {
     const ctx = canvas.getContext("2d", { willReadFrequently: false });
     // CPU pixel storage keeps undo and PNG snapshots off the display GPU's readback path.
     const backing = element("canvas"), pixels = backing.getContext("2d", { willReadFrequently: true });
+    const eraseBase = element("canvas"), basePixels = eraseBase.getContext("2d", { willReadFrequently: true });
     const cursor = element("div", "sp-cursor"); cursor.hidden = true;
     picture.append(canvas, cursor); stage.append(picture);
     const tools = element("div", "sp-row sp-tools");
     const round = button("Round brush", "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z");
     const square = button("Square brush", "M4 4h16v16H4Z");
+    const eraser = button("Eraser · E / Brush · B", "m16 3 5 5a2 2 0 0 1 0 3L11 21H6l-4-4a2 2 0 0 1 0-3L13 3a2 2 0 0 1 3 0ZM7 9l8 8M11 21h11");
+    eraser.title = "Erase paint to the original image or canvas background · E / Brush · B";
     const colour = button("Brush colour"); colour.className = "sp-icon"; colour.style.borderWidth = "3px";
     colour.textContent = "";
     const picker = element("div", "sp-picker"); picker.hidden = true;
@@ -151,7 +155,7 @@ export function setupSpeedpaint(node) {
     const pressure = button("Pen pressure controls size", "m15 3 6 6M4 20l4-1 12-12a2.1 2.1 0 0 0-3-3L5 16l-1 4Z");
     const undo = button("Undo · Ctrl/Cmd+Z", "M9 5 4 10l5 5M4 10h10a6 6 0 0 1 0 12");
     const divider = element("span", "sp-divider");
-    tools.append(round, square, colour, divider, size, sizeLabel, opacity, percent, pressure, undo, picker);
+    tools.append(round, square, eraser, colour, divider, size, sizeLabel, opacity, percent, pressure, undo, picker);
     const file = element("input"); file.type = "file"; file.accept = "image/png,image/jpeg,image/webp"; file.hidden = true;
     root.append(setup, stage, tools, file, shortcuts);
     const dom = node.addDOMWidget("speedpaint_editor", "wn_speedpaint", root, { serialize: false, hideOnZoom: false, getMinHeight: () => 255 });
@@ -170,6 +174,7 @@ export function setupSpeedpaint(node) {
         size.value = Math.log2(settings.size); sizeLabel.textContent = `${settings.size}px`; size.setAttribute("aria-valuetext", `${settings.size} pixels`); opacity.value = settings.opacity;
         percent.textContent = `${settings.opacity}%`;
         round.setAttribute("aria-pressed", String(settings.shape === "round")); square.setAttribute("aria-pressed", String(settings.shape === "square"));
+        eraser.setAttribute("aria-pressed", String(settings.erasing));
         pressure.setAttribute("aria-pressed", String(settings.pressure));
         fresh.disabled = load.disabled = undo.disabled = busy > 0;
         undo.disabled ||= !history.length;
@@ -219,10 +224,38 @@ export function setupSpeedpaint(node) {
         }
         return JSON.stringify({ ...doc, painted: doc.painted || !!stroke?.painted, inline: recovery });
     }
+    async function eraseAsset(document, width = document.width, height = document.height) {
+        if (!document.source && !document.erase_asset) return null;
+        if (!document.painted && (width !== document.width || height !== document.height)) {
+            const base = await request("prepare", { document, width, height }, abort.signal);
+            return base.asset;
+        }
+        let asset = !document.painted ? document.asset : document.erase_asset;
+        if (!asset) {
+            const base = await request("prepare", { document: { ...document, painted: false }, width: document.width, height: document.height }, abort.signal);
+            asset = base.asset;
+        }
+        if (width !== document.width || height !== document.height) {
+            const base = await request("prepare", { document: { v: 1, background: document.background, painted: true, asset }, width, height }, abort.signal);
+            asset = base.asset;
+        }
+        return asset;
+    }
+    function displayBase(image, background) {
+        eraseBase.width = canvas.width; eraseBase.height = canvas.height;
+        if (image) basePixels.drawImage(image, 0, 0);
+        else { basePixels.fillStyle = background; basePixels.fillRect(0, 0, eraseBase.width, eraseBase.height); }
+    }
     async function display(document) {
-        const image = document.inline || document.asset ? await readImage(document.inline || imageURL(document.asset)) : null;
+        const asset = await eraseAsset(document);
+        const [image, base] = await Promise.all([
+            document.inline || document.asset ? readImage(document.inline || imageURL(document.asset)) : null,
+            asset ? readImage(imageURL(asset)) : null,
+        ]);
         if (removed) return;
+        document.erase_asset = asset;
         setDimensions(document.width, document.height);
+        displayBase(base, document.background);
         if (image) { ctx.drawImage(image, 0, 0); pixels.drawImage(image,0,0); }
         else {
             ctx.fillStyle = pixels.fillStyle = document.background;
@@ -294,7 +327,9 @@ export function setupSpeedpaint(node) {
         return operate(async () => {
             const [width, height] = editingSize();
             if (width === canvas.width && height === canvas.height && !derived) return;
-            await replace(await request("prepare", { document: doc, width, height }));
+            const next = await request("prepare", { document: doc, width, height });
+            if (doc.painted) next.erase_asset = await eraseAsset(doc, width, height);
+            await replace(next);
         });
     }
     async function loadFile(upload) {
@@ -305,10 +340,35 @@ export function setupSpeedpaint(node) {
             await replace(await request("import", form));
         });
     }
+    async function loadInput() {
+        if (busy || removed) return;
+        const input = node.inputs?.find(input => input.name === "image");
+        if (input?.link == null) { file.click(); return; }
+        const link = input.link;
+        let failure;
+        busy++; refresh();
+        try {
+            // Serialize outside operate(): graphToPrompt flushes this editor's pending work.
+            await flush();
+            const version = revision;
+            message("Loading upstream image…");
+            const image = await loadConnectedImage(node, app, api, abort.signal);
+            if (removed) return;
+            if (version !== revision || input.link !== link || !belongsToGraph(node, app.rootGraph || app.graph)) {
+                throw new Error("The canvas or connection changed. Retry Load.");
+            }
+            await loadFile(image);
+        } catch (error) {
+            failure = error;
+        } finally {
+            busy--; refresh();
+            if (failure && !removed) message(failure.message, true);
+        }
+    }
     function adoptDerived() {
         if (!derived) return;
         const previous = clone(doc);
-        doc = { ...doc, asset: derived.asset, width: derived.width, height: derived.height, painted: true };
+        doc = { ...doc, asset: derived.asset, erase_asset: derived.erase_asset, width: derived.width, height: derived.height, painted: true };
         delete doc.inline; derived = null;
         pushHistory({ kind: "document", before: previous, after: clone(doc) }); sync();
     }
@@ -336,10 +396,11 @@ export function setupSpeedpaint(node) {
         if (!rect.width || !rect.height || rect.right < 0 || rect.bottom < 0 || rect.left > innerWidth || rect.top > innerHeight) { cursor.hidden = true; return; }
         const p = point(cursorPoint, rect), width = diameter(p) * canvas.clientWidth / canvas.width;
         const height = diameter(p) * canvas.clientHeight / canvas.height;
-        const key = `${width},${height},${settings.shape}`;
+        const key = `${width},${height},${settings.shape},${settings.erasing}`;
         if (key !== outlineKey) {
             cursor.style.width = `${width}px`; cursor.style.height = `${height}px`;
             cursor.style.borderRadius = settings.shape === "square" ? "0" : "50%"; outlineKey = key;
+            cursor.style.borderStyle = settings.erasing ? "dashed" : "solid";
         }
         cursor.style.transform = `translate(${p.x * canvas.clientWidth / canvas.width - width / 2}px, ${p.y * canvas.clientHeight / canvas.height - height / 2}px)`;
         cursor.hidden = false;
@@ -392,7 +453,7 @@ export function setupSpeedpaint(node) {
             canvas.setPointerCapture(event.pointerId); return;
         }
         adoptDerived();
-        stroke = new TileStroke(canvas, ctx, p, settings, event.pointerId, backing);
+        stroke = new TileStroke(canvas, ctx, p, settings, event.pointerId, backing, settings.erasing ? eraseBase : null);
         canvas.setPointerCapture(event.pointerId); frame = requestAnimationFrame(renderStroke);
     });
     canvas.addEventListener("pointermove", event => {
@@ -426,7 +487,7 @@ export function setupSpeedpaint(node) {
     for (const name of ["pointerdown", "pointermove", "pointerup", "dblclick", "wheel", "contextmenu"]) root.addEventListener(name, event => event.stopPropagation());
     stage.addEventListener("dragover", event => { event.preventDefault(); event.stopPropagation(); });
     stage.addEventListener("drop", event => { event.preventDefault(); event.stopPropagation(); loadFile(event.dataTransfer.files[0])?.catch(() => {}); });
-    load.onclick = () => file.click();
+    load.onclick = loadInput;
     file.onchange = () => { loadFile(file.files[0])?.catch(() => {}); file.value = ""; };
     fresh.onclick = () => operate(async () => {
         const [width, height] = editingSize();
@@ -435,6 +496,7 @@ export function setupSpeedpaint(node) {
     background.oninput = () => { settings.background = background.value; remember(); };
     round.onclick = () => { settings.shape = "round"; refresh(); };
     square.onclick = () => { settings.shape = "square"; refresh(); };
+    eraser.onclick = () => { endStroke(); settings.erasing = !settings.erasing; picker.hidden = true; refresh(); };
     pressure.onclick = () => { settings.pressure = !settings.pressure; refresh(); };
     colour.onclick = () => { picker.hidden = !picker.hidden; };
     swatch.oninput = () => { settings.colour = swatch.value; refresh(); };
@@ -476,6 +538,9 @@ export function setupSpeedpaint(node) {
     root.addEventListener("keydown", event => {
         if (event.target !== shortcuts) return;
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.stopPropagation(); travel(event.shiftKey); }
+        if (!event.ctrlKey && !event.metaKey && !event.altKey && ["e", "b"].includes(event.key.toLowerCase())) {
+            event.preventDefault(); event.stopPropagation(); endStroke(); settings.erasing = event.key.toLowerCase() === "e"; picker.hidden = true; refresh();
+        }
         if (event.key === "[" || event.key === "]") { event.preventDefault(); event.stopPropagation(); settings.size = Math.max(1, Math.min(512, settings.size + (event.key === "]" ? 1 : -1))); refresh(); }
         if (!event.ctrlKey && !event.metaKey && event.key.length === 1) event.preventDefault();
     });
@@ -490,7 +555,7 @@ export function setupSpeedpaint(node) {
     const connections = node.onConnectionsChange;
     node.onConnectionsChange = function(...args) {
         const result = connections?.apply(this, args);
-        if (args[0] === 1 && args[3]?.target_id === this.id) queueMicrotask(() => {
+        if (args[0] === 1 && dimensions.some(widget => widget.name === this.inputs?.[args[1]]?.name) && args[3]?.target_id === this.id) queueMicrotask(() => {
             dimensions.forEach((widget, i) => { if (!linked(i)) widget.value = settings.local[i]; });
             if (!args[2] && doc) resize(); else refresh();
         });
@@ -529,9 +594,12 @@ export function setupSpeedpaint(node) {
         const token = ++previewToken, version = revision;
         try {
             const image = await readImage(imageURL(result.asset));
+            const asset = await eraseAsset(doc, result.width, result.height);
+            const base = asset ? await readImage(imageURL(asset)) : null;
             if (removed || token !== previewToken || version !== revision || busy || stroke || cropGesture) return;
             setDimensions(result.width, result.height); ctx.drawImage(image, 0, 0); pixels.drawImage(image,0,0);
-            derived = result.width === doc.width && result.height === doc.height ? null : result;
+            displayBase(base, doc.background);
+            derived = result.width === doc.width && result.height === doc.height ? null : { ...result, erase_asset: asset };
             refresh();
         } catch (error) { message(error.message, true); }
     };
@@ -542,7 +610,7 @@ export function setupSpeedpaint(node) {
     node.onRemoved = function(...args) {
         endStroke(true); endCrop(true); removed = true; hideCursor(); abort.abort(); clearTimeout(saveTimer); observer.disconnect(); editors.delete(editor);
         history = []; future = []; historyBytes = 0; recovery = null; recoveryStroke = null; doc = null; derived = null;
-        canvas.width = canvas.height = backing.width = backing.height = 0; delete node._wnSpeedpaintEditor;
+        canvas.width = canvas.height = backing.width = backing.height = eraseBase.width = eraseBase.height = 0; delete node._wnSpeedpaintEditor;
         window.removeEventListener("blur", blur); document.removeEventListener("visibilitychange", visibility);
         api.removeEventListener("execution_start", executionStart); api.removeEventListener("executed", executed);
         root.remove(); return onRemoved?.apply(this, args);
