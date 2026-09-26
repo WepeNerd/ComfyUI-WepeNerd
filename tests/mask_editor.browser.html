@@ -1,0 +1,302 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Shared mask editor browser checks</title>
+<style>
+body{background:#181818;color:#ddd;font:14px Arial;margin:24px}#editors{display:flex;gap:20px;flex-wrap:wrap}.host{width:412px;padding:12px;border:1px solid #555}button{padding:8px}pre{white-space:pre-wrap;max-height:180px;overflow:auto}h2{font-size:16px}
+</style>
+<h1>Shared mask editor: real Canvas checks</h1>
+<p>Production editor in an isolated host fixture. No model or real queue runs here.</p>
+<button id="run">Run interaction and persistence checks</button>
+<button id="races">Run autosave and async race checks</button>
+<button id="undoFailure">Run failed undo checks</button>
+<button id="perf">Measure four large editors</button>
+<pre id="result">Loading…</pre><div id="editors"></div>
+<script type="module">
+import { MaskStroke, maskSettings } from '../js/mask_stroke.mjs';
+const code = (await (await fetch('../js/wn_masked_lora.js')).text()).replace(/^import .*;\r?\n/gm, '').replace(/^export /gm, '');
+const app = { registerExtension() {} }, assets = new Map();
+const api = { apiURL(path) { return assets.get(new URLSearchParams(path.split('?')[1]).get('filename')); },
+    async fetchApi(path, options) {
+        if (path !== '/upload/image') throw Error(path);
+        const filename = `fixture-${assets.size}.png`;
+        assets.set(filename, URL.createObjectURL(options.body.get('image')));
+        return { ok: true, json: async () => ({ filename, subfolder: 'fixture', type: 'input' }) };
+    } };
+const setup = new Function('app', 'api', 'MaskStroke', 'maskSettings', code + ';return setupMaskedLora;')(app, api, MaskStroke, maskSettings);
+const frame = () => new Promise(requestAnimationFrame);
+const check = (value, message) => { if (!value) throw Error(message); };
+const waitFor = async predicate => {
+    const start = performance.now();
+    while (!predicate()) { check(performance.now() - start < 10000, 'async operation timed out'); await frame(); }
+};
+let encodesPending = 0, readersPending = 0;
+const toBlob = HTMLCanvasElement.prototype.toBlob, readData = FileReader.prototype.readAsDataURL;
+HTMLCanvasElement.prototype.toBlob = function(callback, ...args) {
+    encodesPending++;
+    return toBlob.call(this, blob => { try { callback(blob); } finally { encodesPending--; } }, ...args);
+};
+FileReader.prototype.readAsDataURL = function(...args) {
+    readersPending++;
+    this.addEventListener('loadend', () => readersPending--, { once: true });
+    return readData.apply(this, args);
+};
+const settle = async () => { await frame(); await waitFor(() => !encodesPending && !readersPending); await frame(); };
+const near = (a, b, message) => check(Math.abs(a - b) <= 1 / 255 + 1e-6, `${message}: ${a} vs ${b}`);
+let fixtures = [];
+async function fixture(maskOnly, width = 1536, height = 1024, saved = null) {
+    const host = document.createElement('section'); host.className = 'host';
+    const title = document.createElement('h2'); title.textContent = maskOnly ? 'Paint Mask' : 'Load LoRA Masked';
+    host.append(title); document.querySelector('#editors').append(host);
+    const names = maskOnly ? ['mask_data'] : ['lora_name', 'strength', 'mask_data'];
+    const node = { properties: saved?.properties || { wnMask: { v: 1, open: true, brush: 60 } }, size: [406, 500], inputs: [],
+        widgets: names.map((name, i) => ({ name, value: saved?.widgets_values[i] ?? (name === 'mask_data' ? JSON.stringify({ v: 1, width, height, empty: true }) : name === 'strength' ? -.7 : 'fixture.safetensors') })),
+        graph: { change() {} }, setSize() {}, computeSize: () => [406, 500], setDirtyCanvas() {},
+        addDOMWidget(name, type, root) { host.append(root); return { options: {} }; } };
+    setup(node, { maskOnly }); await settle();
+    const canvas = host.querySelector('.wn-mask-canvas');
+    // The synthetic fixture supplies capture; manual browser gestures use real capture.
+    const captures = new Set();
+    canvas.setPointerCapture = id => captures.add(id); canvas.releasePointerCapture = id => captures.delete(id); canvas.hasPointerCapture = id => captures.has(id);
+    const result = { node, host, canvas, width, height, button: name => host.querySelector(`[aria-label="${name}"]`),
+        data: () => node.widgets.find(w => w.name === 'mask_data'),
+        async setting(name, value) { const input = this.button(name); input.value = value; input.oninput(); await settle(); },
+        async tool(name) { await this.button(name).onclick(); await settle(); },
+        event(x, y, extra = {}) { const rect = canvas.getBoundingClientRect(); return { pointerId: 7, button: 0,
+            clientX: rect.left + x / width * rect.width, clientY: rect.top + y / height * rect.height, preventDefault() {}, stopPropagation() {}, ...extra }; },
+        async stroke(points, end = 'up') {
+            canvas.onpointerdown(this.event(...points[0]));
+            for (const point of points.slice(1)) { canvas.onpointermove(this.event(...point)); await frame(); }
+            if (end === 'up') canvas.onpointerup(this.event(...points.at(-1)));
+            if (end === 'cancel') canvas.onpointercancel();
+            if (end === 'lost') canvas.onlostpointercapture();
+            if (end === 'blur') window.dispatchEvent(new Event('blur'));
+            await settle();
+        },
+        serialize() { const info = { properties: structuredClone(node.properties), widgets_values: node.widgets.map(w => w.value) }; node.onSerialize(info); return JSON.parse(JSON.stringify(info)); },
+        async pixels() {
+            const doc = JSON.parse(this.data().value), raster = document.createElement('canvas'); raster.width = doc.width; raster.height = doc.height;
+            const ctx = raster.getContext('2d', { willReadFrequently: true });
+            if (doc.png) { const image = new Image(); image.src = doc.png; await image.decode(); ctx.drawImage(image, 0, 0); }
+            return { doc, pixel: (x, y) => [...ctx.getImageData(x, y, 1, 1).data] };
+        } };
+    fixtures.push(result); return result;
+}
+function reset() { for (const f of fixtures) { f.node.onRemoved(); f.host.remove(); } fixtures = []; }
+await fixture(false); await fixture(true); document.querySelector('#result').textContent = 'Ready';
+document.querySelector('#run').onclick = async () => {
+    const results = [];
+    try {
+        reset();
+        for (const maskOnly of [false, true]) {
+            const f = await fixture(maskOnly);
+            check(f.node.properties.wnMask.softness === 0 && f.node.properties.wnMask.opacity === 100, 'legacy defaults');
+            await f.setting('Opacity', 50); await f.setting('Brush size', 120);
+            await f.stroke([[500, 512], [768, 512], [768, 512], [800, 512]]);
+            near((await f.pixels()).pixel(768, 512)[3] / 255, .5, 'one stroke');
+            await f.stroke([[500, 512], [800, 512]]);
+            near((await f.pixels()).pixel(768, 512)[3] / 255, .75, 'two strokes');
+            const beforeErase = f.data().value;
+            await f.tool('Eraser'); await f.setting('Softness', 100);
+            await f.stroke([[768.5, 512.5]]);
+            const erased = await f.pixels(); near(erased.pixel(768, 512)[3] / 255, .375, 'soft eraser center');
+            check(erased.pixel(810, 512)[3] > erased.pixel(768, 512)[3], 'soft eraser falloff');
+            await f.button('Undo').onclick(); check(f.data().value === beforeErase, 'one gesture one undo');
+            for (const end of ['cancel', 'lost', 'blur']) {
+                await f.stroke([[768, 512], [900, 512]], end); check(f.data().value === beforeErase, end + ' preserves serialization');
+                await f.setting('Opacity', 0); await f.stroke([[768, 512]]); check(f.data().value === beforeErase, 'opacity zero no change');
+                await f.setting('Opacity', 50);
+            }
+            await f.tool('Rectangle'); check(f.button('Softness').disabled, 'rectangle softness disabled');
+            await f.stroke([[50, 50], [200, 150]]); near((await f.pixels()).pixel(100, 100)[3] / 255, .5, 'rectangle opacity');
+            await f.tool('Brush'); await f.setting('Softness', 80);
+            const durable = f.data().value;
+            // Autosave and queue capture current pixels while the same drag continues.
+            await f.stroke([[350, 300], [600, 300]], 'pending');
+            const checkpoint = f.serialize(); check(checkpoint.widgets_values.at(-1) !== durable, 'export latest gesture');
+            check(f.canvas.hasPointerCapture(7), 'autosave preserves pointer capture');
+            f.data().serializeValue(); check(f.canvas.hasPointerCapture(7), 'queue preserves pointer capture');
+            f.canvas.onpointermove(f.event(1000, 300)); f.canvas.onpointerup(f.event(1100, 300)); await settle();
+            check((await f.pixels()).pixel(1050, 300)[3] > 0, 'drag continues after save and queue');
+            const exported = f.serialize(), queued = f.data().serializeValue();
+            const duplicate = await fixture(maskOnly, 1536, 1024, exported);
+            check(duplicate.data().value === f.data().value, 'PNG reload equality');
+            check(duplicate.node.properties.wnMask.opacity === 50 && duplicate.node.properties.wnMask.softness === 80, 'settings reload');
+            await duplicate.setting('Opacity', 23); check(f.node.properties.wnMask.opacity === 50, 'duplicate settings independent');
+            duplicate.button('Clear mask').click(); check(JSON.parse(duplicate.data().value).empty, 'transparent empty marker');
+            check(f.data().value !== duplicate.data().value, 'duplicate mask/history independent');
+            const p = (await f.pixels()).pixel(500, 300); check(p.slice(0, 3).every(v => v === 255) && p[3] > 0 && p[3] < 255, 'untinted PNG alpha');
+            f.node.inputs.push({ name: 'mask', link: 1 }); f.node.onConnectionsChange();
+            check(f.host.querySelector('.wn-mask-state').textContent === 'Using MASK input' && !f.host.querySelector('.wn-mask-override').hidden, 'external override warning');
+            f.button('Grayscale mask').click(); await settle();
+            check(f.node.properties.wnMask.grayscale && f.data().value === queued, 'grayscale does not modify coverage');
+            f.node.inputs[0].link = null; f.node.onConnectionsChange();
+            // Real image decode/upload/adoption, dimension decision and undo.
+            const source = document.createElement('canvas'); source.width = 320; source.height = 192;
+            const ctx = source.getContext('2d'); ctx.fillStyle = '#3a7299'; ctx.fillRect(0, 0, 320, 192);
+            const blob = await new Promise(resolve => source.toBlob(resolve));
+            f.host.querySelector('.wn-mask-editor').ondrop({ dataTransfer: { files: [blob] }, preventDefault() {}, stopPropagation() {} });
+            for (let i = 0; i < 100 && f.host.querySelector('.wn-mask-decision').hidden; i++) await frame();
+            check(!f.host.querySelector('.wn-mask-decision').hidden, 'reference replacement asks when dimensions differ');
+            [...f.host.querySelectorAll('button')].find(b => b.textContent === 'Replace').click(); await settle();
+            let doc = JSON.parse(f.data().value); check(doc.width === 320 && doc.height === 192 && doc.empty, 'reference replacement geometry');
+            await f.button('Undo').onclick(); doc = JSON.parse(f.data().value); check(doc.width === 1536 && doc.height === 1024 && doc.png, 'reference undo');
+            duplicate.node.onRemoved(); duplicate.host.remove(); fixtures = fixtures.filter(v => v !== duplicate);
+            results.push({ editor: maskOnly ? 'Paint Mask' : 'Load LoRA Masked', status: 'PASS', checks: 'brush, soft erase, rectangle, undo, cancel/lost/blur, opacity zero, export/queue hooks, PNG reload, duplicate, override, grayscale, reference replacement' });
+        }
+        document.querySelector('#result').textContent = JSON.stringify({ results, userAgent: navigator.userAgent, dpr: devicePixelRatio }, null, 2);
+    } catch (error) { document.querySelector('#result').textContent = 'FAIL: ' + error.stack; }
+};
+
+document.querySelector('#races').onclick = async () => {
+    const results = [];
+    try {
+        reset();
+        for (const maskOnly of [false, true]) {
+            const f = await fixture(maskOnly, 256, 128);
+            await f.setting('Brush size', 20); await f.setting('Opacity', 100);
+            const blank = f.data().value;
+            // Repeated checkpoints preserve one undo boundary, and cancel reverts saved pixels.
+            await f.stroke([[25, 32], [50, 32]], 'pending'); f.serialize(); f.data().serializeValue();
+            f.canvas.onpointermove(f.event(100, 32)); f.serialize();
+            f.canvas.onpointerup(f.event(130, 32)); await settle();
+            check((await f.pixels()).pixel(120, 32)[3] === 255, 'continued stroke');
+            await f.button('Undo').onclick(); check(f.data().value === blank, 'one undo for checkpointed gesture');
+            for (const end of ['cancel', 'lost', 'blur', 'escape']) {
+                await f.stroke([[25, 32], [100, 32]], 'pending'); f.serialize();
+                if (end === 'cancel') f.canvas.onpointercancel();
+                if (end === 'lost') f.canvas.onlostpointercapture();
+                if (end === 'blur') window.dispatchEvent(new Event('blur'));
+                if (end === 'escape') f.host.querySelector('.wn-mask-editor').onkeydown({ key: 'Escape', stopPropagation() {} });
+                await settle(); check(f.data().value === blank, 'checkpoint then ' + end);
+            }
+            const parse = JSON.parse; let parses = 0, changes = 0;
+            JSON.parse = (...args) => { parses++; return parse(...args); };
+            try { f.canvas.onpointerdown(f.event(32, 32)); } finally { JSON.parse = parse; }
+            check(parses === 0, 'pointerdown reuses its PNG record without JSON parsing');
+            f.serialize(); // No new pixels at pointerup: commit still notifies change tracking.
+            f.node.graph.change = () => changes++;
+            f.canvas.onpointerup(f.event(32, 32)); await settle(); check(changes > 0, 'checkpointed commit notifies graph');
+            await f.tool('Eraser'); await f.setting('Brush size', 80); await f.stroke([[32, 32]]);
+            check(JSON.parse(f.data().value).empty && f.host.querySelector('.wn-mask-state').textContent === 'Empty', 'full erasure tracks empty without a scan');
+            await f.tool('Brush'); await f.setting('Brush size', 20);
+            const original = HTMLCanvasElement.prototype.toBlob, held = [];
+            HTMLCanvasElement.prototype.toBlob = function(callback, ...args) {
+                return original.call(this, blob => held.push(() => callback(blob)), ...args);
+            };
+            const draw = (x, y) => { f.canvas.onpointerdown(f.event(x, y)); f.canvas.onpointerup(f.event(x, y)); };
+            const release = async index => { await waitFor(() => Boolean(held[index])); held[index](); await settle(); };
+            try {
+                draw(32, 32); draw(96, 32);
+                await release(1); const newest = f.data().value;
+                await release(0); check(f.data().value === newest, 'late encode cannot overwrite newer stroke');
+                let pixels = await f.pixels(); check(pixels.pixel(32, 32)[3] && pixels.pixel(96, 32)[3], 'toBlob snapshots complete mask');
+                // Undo waits for the previous pending record rather than decoding stale data.value.
+                draw(160, 32); draw(224, 32); await release(3);
+                const undo = f.button('Undo').onclick(); await frame(); await release(2); await undo;
+                pixels = await f.pixels(); check(pixels.pixel(160, 32)[3] && !pixels.pixel(224, 32)[3], 'undo awaits pending previous PNG');
+                draw(32, 96); f.button('Clear mask').click(); await release(4);
+                check(JSON.parse(f.data().value).empty, 'clear invalidates pending encode');
+                await f.button('Undo').onclick(); check((await f.pixels()).pixel(32, 96)[3], 'undo clear restores pending record');
+                draw(96, 96); const sync = f.data().serializeValue(); await release(5);
+                check(sync === f.data().value && (await f.pixels()).pixel(96, 96)[3], 'sync queue fallback supersedes async encode');
+                draw(160, 96);
+                f.data().value = blank; f.node.onConfigure({ widgets_values: f.node.widgets.map(w => w.value) }); await settle();
+                await release(6); check(f.data().value === blank, 'configure invalidates pending encode');
+                draw(224, 96); f.node.onRemoved(); const removed = f.data().value; await release(7);
+                check(f.data().value === removed, 'removal invalidates pending encode');
+            } finally { HTMLCanvasElement.prototype.toBlob = original; }
+            f.host.remove(); fixtures = fixtures.filter(value => value !== f);
+            results.push({ editor: maskOnly ? 'Paint Mask' : 'Load LoRA Masked', status: 'PASS',
+                checks: 'live autosave/queue, single undo, cancel/lost/blur/Escape, out-of-order encodes, pending undo, clear/undo, sync queue, configure, removal' });
+        }
+        document.querySelector('#result').textContent = JSON.stringify({ results, userAgent: navigator.userAgent }, null, 2);
+    } catch (error) { document.querySelector('#result').textContent = 'FAIL: ' + error.stack; }
+};
+document.querySelector('#undoFailure').onclick = async () => {
+    const results = [], rejections = [];
+    const rejected = event => { rejections.push(String(event.reason)); event.preventDefault(); };
+    window.addEventListener('unhandledrejection', rejected);
+    try {
+        reset();
+        for (const maskOnly of [false, true]) {
+            const f = await fixture(maskOnly, 256, 128);
+            await f.setting('Brush size', 20);
+            const original = HTMLCanvasElement.prototype.toBlob;
+            let failNext = true;
+            HTMLCanvasElement.prototype.toBlob = function(callback, ...args) {
+                if (failNext) { failNext = false; queueMicrotask(() => callback(null)); }
+                else return original.call(this, callback, ...args);
+            };
+            try {
+                // Stroke two captures stroke one's still-pending PNG for Undo.
+                for (const x of [32, 96]) {
+                    f.canvas.onpointerdown(f.event(x, 32)); f.canvas.onpointerup(f.event(x, 32));
+                }
+                await settle();
+                const current = f.data().value;
+                check((await f.pixels()).pixel(96, 32)[3] > 0, 'second stroke encoded');
+                for (let i = 0; i < 2; i++) {
+                    f.button('Undo').click(); await settle();
+                    check(f.data().value === current, 'failed undo retains current painting and history');
+                    check(!f.button('Undo').disabled, 'failed undo keeps its history entry');
+                    check(f.host.textContent.includes('Cannot undo: Could not encode the mask PNG.'), 'undo error visible');
+                    check(rejections.length === 0, 'no unhandled rejection: ' + rejections.join(', '));
+                }
+            } finally { HTMLCanvasElement.prototype.toBlob = original; }
+            results.push({ editor: maskOnly ? 'Paint Mask' : 'Load LoRA Masked', status: 'PASS',
+                checks: 'failed historical PNG encode, repeated Undo preserves entry and painting, visible error, no unhandled rejection' });
+        }
+        document.querySelector('#result').textContent = JSON.stringify({ results, userAgent: navigator.userAgent }, null, 2);
+    } catch (error) { document.querySelector('#result').textContent = 'FAIL: ' + error.stack; }
+    finally { window.removeEventListener('unhandledrejection', rejected); }
+};
+
+document.querySelector('#perf').onclick = async () => {
+    try {
+        reset(); for (let i = 0; i < 4; i++) await fixture(i % 2 === 1, 4096, 3072);
+        const counts = { encodes: 0, asyncEncodes: 0, reads: 0, fullMaskReads: 0, resizes: 0, allocations: 0, imageDraws: 0 };
+        const restore = [], timings = { encodes: 0, reads: 0, imageDraws: 0, renderCallbacks: [] };
+        for (const [object, name, key] of [[HTMLCanvasElement.prototype, 'toDataURL', 'encodes'], [CanvasRenderingContext2D.prototype, 'getImageData', 'reads'], [CanvasRenderingContext2D.prototype, 'drawImage', 'imageDraws']]) {
+            const original = object[name]; object[name] = function(...args) { const start = performance.now(); counts[key]++; if (name === 'getImageData' && args[2] === 4096 && args[3] === 3072) counts.fullMaskReads++; const result = original.apply(this, args); timings[key] += performance.now() - start; return result; }; restore.push(() => object[name] = original);
+        }
+        const originalBlob = HTMLCanvasElement.prototype.toBlob;
+        HTMLCanvasElement.prototype.toBlob = function(...args) { counts.asyncEncodes++; return originalBlob.apply(this, args); };
+        restore.push(() => HTMLCanvasElement.prototype.toBlob = originalBlob);
+        for (const name of ['width', 'height']) {
+            const descriptor = Object.getOwnPropertyDescriptor(HTMLCanvasElement.prototype, name);
+            Object.defineProperty(HTMLCanvasElement.prototype, name, { ...descriptor, set(value) { counts.resizes++; return descriptor.set.call(this, value); } });
+            restore.push(() => Object.defineProperty(HTMLCanvasElement.prototype, name, descriptor));
+        }
+        const create = document.createElement;
+        document.createElement = function(tag, ...args) { if (tag === 'canvas') counts.allocations++; return create.call(this, tag, ...args); };
+        restore.push(() => document.createElement = create);
+        const raf = window.requestAnimationFrame;
+        window.requestAnimationFrame = callback => raf.call(window, time => { const start = performance.now(); callback(time); timings.renderCallbacks.push(performance.now() - start); });
+        restore.push(() => window.requestAnimationFrame = raf);
+        const trace = [];
+        try {
+            performance.mark('mask-hover-start');
+            for (let i = 0; i < 100; i++) {
+                const start = performance.now();
+                for (const f of fixtures) f.canvas.onpointermove(f.event(20 + i * 25, 1000));
+                await frame(); trace.push(performance.now() - start);
+            }
+            performance.mark('mask-hover-end'); performance.measure('mask-editor-100-hover-frames', 'mask-hover-start', 'mask-hover-end');
+            const idle = { ...counts }; check(Object.values(idle).every(v => v === 0), 'idle work: ' + JSON.stringify(idle));
+            const f = fixtures[0]; await f.setting('Brush size', 256); await f.setting('Softness', 75); await f.setting('Opacity', 50);
+            const idleCallbackMs = timings.renderCallbacks.slice(); timings.renderCallbacks.length = 0;
+            const start = performance.now();
+            f.canvas.onpointerdown(f.event(500, 1000));
+            for (let i = 1; i <= 60; i++) { f.canvas.onpointermove(f.event(500 + i * 45, 1000 + Math.sin(i / 10) * 200)); if (i % 4 === 0) await frame(); }
+            const gestureMs = performance.now() - start;
+            const commitStart = performance.now(); f.canvas.onpointerup(f.event(3200, 944)); const commitMs = performance.now() - commitStart;
+            await settle();
+            document.querySelector('#result').textContent = JSON.stringify({ editors: 4, mask: [4096, 3072], idleMovesPerEditor: 100,
+                idle, hoverFrameMs: { median: trace.toSorted((a, b) => a - b)[50], max: Math.max(...trace) },
+                idleCallbackMs: { max: Math.max(...idleCallbackMs), total: idleCallbackMs.reduce((a, b) => a + b, 0) },
+                gesture60Samples15FramesMs: gestureMs, pointerupMs: commitMs, asyncPngFinishedAfterMs: performance.now() - commitStart, afterStroke: counts, timings,
+                trace, userAgent: navigator.userAgent, dpr: devicePixelRatio }, null, 2);
+        } finally { restore.reverse().forEach(fn => fn()); }
+    } catch (error) { document.querySelector('#result').textContent = 'FAIL: ' + error.stack; }
+};
+</script>

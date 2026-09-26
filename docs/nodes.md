@@ -323,10 +323,11 @@ saved editable warp connected to Preview Image.
 
 **Category:** `WepeNerd/Image` · **Outputs:** `MASK`, `IMAGE`.
 
-Open or drop an image, then paint with the same brush, rectangle, eraser, brush
-size, Undo and Clear controls as Load LoRA Masked. The editor opens expanded.
-Connect MASK downstream and Queue: painted pixels are 1 (white), untouched pixels
-are 0 (black), with antialiased edges. The magenta overlay is only a preview.
+Open or drop an image, then paint with the same brush, rectangle, eraser, Size,
+Softness, Opacity, Undo and Clear controls as Load LoRA Masked. The editor opens
+expanded. Connect MASK downstream and Queue: full coverage is 1 (white), untouched
+pixels are 0 (black), and soft/partial coverage is gray. The magenta overlay is only
+a preview; the **Grayscale mask** toggle displays the saved coverage directly.
 For an opened file, output uses its exact oriented dimensions; Clear keeps those
 dimensions. IMAGE returns the original RGB image without the mask overlay.
 Without an image, the canvas and IMAGE output are black at 1024 × 1024.
@@ -366,16 +367,48 @@ follow ComfyUI's own weight patching and requantization behavior.
 
 Connect MODEL, choose an installed LoRA and set strength (negative values are supported).
 Open **Edit mask** and paint with the brush, rectangle or eraser. Empty masks have no
-effect. The magenta overlay is a fixed 45% display preview; painted interiors apply
-the full selected strength. Undo restores a whole gesture, image replacement or Clear.
+effect. The magenta overlay is a fixed 45% display preview, separate from coverage.
+Undo restores a whole gesture, image replacement or Clear.
+
+**Size** is the diameter in source-image pixels. **Softness** changes the brush and
+eraser edge falloff: 0% is hard; 100% has a broad smooth edge. **Opacity** controls
+coverage per gesture. On an empty mask, one 50% stroke gives about 0.5 and a second
+separate stroke gives about 0.75. Pausing or retracing within one gesture does not
+keep building coverage. Erasing removes the same fraction of the starting mask.
+Rectangles use opacity with hard edges; their Size and Softness controls are disabled.
+Legacy workflows default to hard edges and 100% opacity.
+
+The **Grayscale mask** toggle shows black-to-white coverage instead of the reference
+overlay. Soft/gray coverage scales the selected LoRA strength. When MASK is connected,
+**Using MASK input** and an editor notice identify the saved painting as inactive;
+painting and grayscale preview still refer to that saved painting.
 
 Connect the optional **mask** input to use a mask from another node instead of the
-saved painting. Disconnect it to use the painting again. Mask batches repeat or
-truncate to match the sampling batch, following ComfyUI's mask handling.
+saved painting. Disconnect it to use the painting again. External masks accept
+`[H, W]` or `[B, H, W]`, are copied to CPU float32, and retain their full resolution.
+NaN/Infinity is rejected; finite values outside `[0, 1]` are clamped with a warning.
+Negative LoRA strength is independent of mask coverage. Mask batches repeat or
+truncate within each logical image batch, then repeat for each actual conditioning
+chunk in the sampler's order. For masks A/B and image batch 3, two chunks use
+`A B A | A B A`. Extra mask rows produce one warning per mask/batch layout during
+each sampling run instead of being silently dropped.
 
 The **MASK** output below **MODEL** returns the selected mask at its original
 resolution for other mask nodes. White applies the LoRA, black has no effect;
-the mask is available even when LoRA strength is zero.
+gray scales the contribution continuously. The mask is available even when LoRA
+strength is zero. Clear retains the editor dimensions using a versioned empty
+marker. Legacy empty strings retain the historical 1024 × 1024 default. Masks are
+limited to 16384 pixels per side, 64 Mi pixels total (including batch), and 96 MiB
+of serialized text. Saved PNG dimensions must match their header; alpha stores
+coverage and never the magenta preview.
+
+Downsampling now uses area/adaptive averaging so narrow painted regions survive
+projection to image tokens. Integer reductions are exact block averages; noninteger
+reductions are adaptive averages. Upsampling is bilinear; mixed-axis resizing
+reduces shrinking axes first. Geometry follows the actual latent size and model
+patch size. For patch padding, coverage first maps to the unpadded latent, wraps
+the right/bottom border circularly like native Krea2, then averages into tokens.
+This intentionally fixes the previous bilinear aliasing at mask edges.
 
 Drop/open an image to use its exact oriented dimensions, or paint on the default
 1024 Ã— 1024 blank canvas. Masks map proportionally to the sampled image grid; use a
@@ -389,23 +422,87 @@ the first batch image and never queues downstream generation. Connecting or remo
 a wire does not replace the reference. Different-size replacements require Replace /
 Cancel when painted. Same-size replacements retain the mask.
 
-Mask PNGs, reference PNGs, geometry, brush size and folded state are saved in the
-workflow; image data is embedded so exporting the workflow does not lose those assets.
-LoRA/model files must still be installed on the destination machine. Uploaded references
-and executed masks also use ComfyUI's input assets. Duplicates have independent editors.
+Mask PNGs (or empty markers), geometry, Size/Softness/Opacity, grayscale preview and
+folded state are saved in the workflow. Saving, exporting or queuing captures the
+current brush pixels without ending the drag. Pointer release commits one undo
+step; Escape, cancellation or lost capture restores its starting mask, even after
+a save during the gesture. Reference images use ComfyUI input-asset descriptors; copy the
+`input/wepenerd_masked_lora` folder with workflows when moving machines. LoRA/model
+files must also be installed on the destination machine. Duplicates have independent editors.
+Hover updates only the cursor layer. Painting updates the preview once per animation
+frame. Changed gestures encode PNGs asynchronously; an immediate save/queue falls
+back to synchronous encoding when necessary. Coverage tracking avoids a full-mask
+alpha scan after each stroke, and pointerdown reuses the existing document without
+parsing its PNG text. See [editor and runtime review fixes](masked-lora-review-fixes.md)
+for tested behavior, timings and remaining large-brush limits.
+Failed undo restores report an error and retain both the current painting and
+the history entry; successful restores remove the entry.
 
 Chained masked nodes add independent spatial contributions and preserve ordinary
 global LoRA weight patches. Supported adapters are linear LoRA and full/factored LoKr,
-including alpha/rank scaling. DoRA, convolution/Tucker, reshape and other adapter formats
-are rejected on spatial layers. Text, timestep, modulation and normalization layers are
-omitted and diagnosed in logs. Native still-image reference layouts `index` and
+including alpha/rank scaling. LoHa, DoRA, convolution/Tucker, reshape, other adapter
+formats and recognized unmapped adapter tensors are rejected before any patches
+are applied, including unsupported tensors in omitted layers. Supported text,
+timestep, modulation and normalization adapters are omitted and diagnosed separately.
+A file without compatible spatial layers is an error. A black mask or zero strength
+can bypass file inspection and does not certify the adapter's format.
+Model-layer validation runs once on each patched projection; untouched layers stay
+under the native model's handling. This does not certify other model formats.
+Native still-image reference layouts `index` and
 `index_timestep_zero` are supported; reference tokens themselves are not adapted.
 
 A full mask need not equal a global loader because of the omitted layers. Attention and
 denoising can spread indirect effects beyond the painted area; use final compositing
-when exact pixel preservation is needed. Custom INT8 loaders, GGUF, FP8, NVFP4, temporal inputs and patches
-that rearrange input tokens are outside v1 support. Real-model fidelity, generation
-timing and peak VRAM have not been benchmarked.
+when exact pixel preservation is needed. Custom quantized loaders, GGUF, FP8, NVFP4,
+video, cropped regional conditioning, tiled/context sampling, multi-GPU sampling,
+and input-token rearrangement are unsupported. Unverified calls without conditioning
+chunk metadata fail clearly. Future sample reordering/subsetting integrations must
+supply explicit sample indices and global crop origins; local tensor dimensions are
+insufficient.
+
+**start_percent / end_percent** default to **0 / 1**. Range follows the model's
+denoising progression; a partial-denoise run may use only part of it. Endpoints
+use the active model sampling object's `percent_to_sigma`, including its shift,
+and are inclusive. Equal endpoints disable the adapter; reversed or nonfinite
+ranges are errors. Full 0–1 always applies, including custom sigma excursions.
+Repeated evaluations at the same sigma make the same decision; revisiting an
+allowed sigma in a nonmonotonic schedule activates the adapter again.
+
+**apply_to** defaults to **Both**. **Positive only** gates direct adapter injection
+to positive conditioning chunks using native KSampler/CFGGuider/BasicGuider
+metadata. It supports split CFG calls and CFG=1, but rejects custom guiders and
+custom conditioning/prediction wrappers whose branch meaning is unverified.
+Mixed batches compute adapter deltas only for the active rows.
+This changes interaction with CFG; it does not always improve quality, change
+text encoder weights, or schedule other nodes' global LoRAs. Chained masked nodes
+can use independent ranges and modes. Old workflow/API fields default to full
+range/Both. See [Phase 4 sampling validation](masked-lora-phase4.md).
+
+Chained regions share one layer dispatcher and one sampling layout. Adapter tensors
+and projected masks are reused within each sampling run, with a default 256 MiB
+residency cap and 1 GiB free-memory headroom. Entries are converted lazily after
+model preparation and released on completion, error or interruption. Entries that
+fit stay resident; adapter overflow streams without evicting the working set on
+every layer visit. New projected masks get admission priority, displacing adapters
+first, so layout changes can reuse masks across layers. Byte/entry limits still
+apply; a disabled cache or a mask larger than the cap streams. Actual device-memory
+pressure can also evict cached entries. Set
+`WEPENERD_MASKED_LORA_CACHE_MB=0` before starting ComfyUI for low-memory streaming;
+this trades repeated transfers/projection for less retained memory. A large
+adapter still needs working memory for its native calculation.
+Invalid cache/headroom environment values warn and use their defaults.
+
+Unchanged adapter files reuse a bounded CPU cache, including after mask-only edits.
+Ordinary file replacement is detected when queuing. Restart ComfyUI to force a
+fresh read if a writer preserved all file metadata. See
+[Phase 2 runtime and measurements](masked-lora-phase2.md) for cache settings,
+in-process invalidation and measured RTX 5090 tradeoffs.
+
+The compatibility boundary remains native floating-point and native INT8 ConvRot
+Krea2. See [Phase 1 validation](masked-lora-phase1.md) for actual numerical and
+integration results, the Phase 2 report for runtime regressions, and Phase 4 for
+fixed-seed generation evidence and its visual-quality limits. FP8/NVFP4, Qwen and
+Flux remain unsupported.
 
 ## Sigma Curve
 

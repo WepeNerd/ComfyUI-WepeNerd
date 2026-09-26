@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import { executionId, imageAncestors, upstreamNodes } from "./mask_input.mjs";
+import { MaskStroke, maskSettings } from "./mask_stroke.mjs";
 
 const NODE = "WepeNerdLoadLoraMasked";
 const style = document.createElement("style");
@@ -13,7 +14,10 @@ style.textContent = `.wn-mask-editor{--wn-accent:#efa5cd;font:12px var(--comfy-f
 .wn-mask-editor .wn-mask-tools svg,.wn-mask-editor .wn-mask-tools i{width:16px;height:16px;display:block}.wn-mask-editor .wn-mask-stage{position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--comfy-input-bg,#202125);border:1px solid var(--border-color,#494d57);border-radius:3px;flex-shrink:0}
 .wn-mask-editor canvas.wn-mask-canvas{display:block;touch-action:none;cursor:crosshair}.wn-mask-editor input[type=range]{min-width:40px;width:60px;flex:1;accent-color:var(--wn-accent);margin:0 4px}.wn-mask-editor .wn-mask-note{font-size:11px;color:var(--descrip-text,#afb2bc)}
 .wn-mask-editor .wn-mask-between{justify-content:space-between}.wn-mask-editor .wn-mask-hint{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;color:var(--descrip-text,#afb2bc)}
-.wn-mask-editor .wn-mask-decision{flex-wrap:wrap;padding:8px;background:var(--comfy-menu-bg,#35363b);border-radius:4px}`;
+.wn-mask-editor .wn-mask-decision{flex-wrap:wrap;padding:8px;background:var(--comfy-menu-bg,#35363b);border-radius:4px}
+.wn-mask-editor .wn-mask-control{display:flex;align-items:center;gap:3px;flex:1;min-width:0}.wn-mask-editor .wn-mask-value{min-width:34px;text-align:right;font-variant-numeric:tabular-nums}.wn-mask-editor .wn-mask-control:has(input:disabled){opacity:.45}
+.wn-mask-editor .wn-mask-canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}.wn-mask-editor .wn-mask-composite{display:block;pointer-events:none}
+.wn-mask-editor .wn-mask-override{color:var(--wn-accent);font-size:11px}.wn-mask-editor[data-external=true] .wn-mask-state{color:var(--wn-accent);font-weight:600}`;
 document.head.append(style);
 
 function element(tag, className = "") {
@@ -65,11 +69,14 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
             ctx.restore();
         };
     }
-    let saved = node.properties.wnMask || { v: 1, open: maskOnly, brush: 60, reference: null };
-    let hasPaint = false;
+    let saved = maskSettings(node.properties.wnMask, maskOnly);
+    let coveredPixels = 0, maskDirty = false;
+    let maskRecord = { document: { v: 1, width: 1024, height: 1024, empty: true } };
     let reference = null, busy = false, removed = false, restoring = false;
     let gesture = null, pointer = null, pending = null, upstreamArmed = false;
     let history = [];
+    let frame = null, compositeDirty = true, referenceDirty = true;
+    let hydrationId = 0;
     const mask = element("canvas");
     mask.width = mask.height = 1024;
     const mctx = mask.getContext("2d", { willReadFrequently: true });
@@ -108,9 +115,29 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
     size.setAttribute("aria-label", "Brush size");
     const undo = iconButton("Undo", "undo-2");
     const clear = iconButton("Clear mask", "trash-2");
+    const grayscale = iconButton("Grayscale mask", null, ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z", "M12 3v18M12 6h6M12 9h8M12 12h9M12 15h8M12 18h6"]);
+    grayscale.title = "Inspect saved painting as grayscale coverage (black 0, white 1).";
+    function control(label, input, unit) {
+        const group = element("label", "wn-mask-control"), name = element("span"), value = element("span", "wn-mask-value");
+        name.textContent = label;
+        group.append(name, input, value);
+        input.showValue = () => { value.textContent = `${input.value}${unit}`; };
+        input.showValue();
+        return group;
+    }
+    const softness = element("input"), opacity = element("input");
+    for (const [input, label, value] of [[softness, "Softness", saved.softness], [opacity, "Opacity", saved.opacity]]) {
+        input.type = "range"; input.min = 0; input.max = 100; input.value = value; input.setAttribute("aria-label", label);
+    }
+    softness.title = "Brush and eraser edge falloff; rectangles have hard edges.";
+    opacity.title = "Coverage deposited or removed by one gesture; repeated gestures build coverage.";
+    const brushSettings = element("div", "wn-mask-row");
+    brushSettings.append(control("Softness", softness, "%"), control("Opacity", opacity, "%"));
     const source = element("button");
     source.title = maskOnly ? "Run the connected upstream path and load its first image. Never runs downstream nodes." : "Load a snapshot of the first image in the connected batch. Never runs downstream nodes.";
-    toolbar.append(brush, rectangle, eraser, size, undo, clear);
+    toolbar.append(brush, rectangle, eraser, control("Size", size, "px"), undo, clear, grayscale);
+    const override = element("div", "wn-mask-override"); override.hidden = true;
+    override.textContent = "Saved painting only — disconnect MASK to apply it.";
     const sourceRow = element("div", "wn-mask-row wn-mask-between");
     const sourceState = element("span", "wn-mask-note");
     sourceRow.append(sourceState, source);
@@ -122,14 +149,32 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
     decision.append(question, replace, cancel);
     const stage = element("div", "wn-mask-stage");
     const canvas = element("canvas", "wn-mask-canvas");
+    const composite = element("canvas", "wn-mask-composite");
+    const tint = element("canvas"), referenceLayer = element("canvas");
     canvas.setAttribute("aria-label", "Paint mask here, or drop an image");
     const hint = element("span", "wn-mask-hint"); hint.textContent = "Drop image or paint here";
-    stage.append(canvas, hint);
+    stage.append(composite, canvas, hint);
     const dimensions = element("div", "wn-mask-note");
     dimensions.title = maskOnly ? "MASK output uses these exact dimensions. Painted areas are white (1); untouched areas are black (0)." : "The mask maps proportionally to the output image grid. A blank square mask stretches on non-square outputs. Load an image with the intended aspect ratio for aligned painting.";
     const note = element("div", "wn-mask-note"); note.setAttribute("role", "status");
+    const rangeNote = element("div", "wn-mask-note"); rangeNote.setAttribute("role", "status");
+    const scheduleDefaults = { start_percent: 0, end_percent: 1, apply_to: "Both" };
+    const scheduleWidgets = maskOnly ? [] : node.widgets.filter(w => w.name in scheduleDefaults);
+    function refreshRange() {
+        const start = scheduleWidgets.find(w => w.name === "start_percent")?.value ?? 0;
+        const end = scheduleWidgets.find(w => w.name === "end_percent")?.value ?? 1;
+        const connected = node.inputs?.some(i => i.link != null && ["start_percent", "end_percent"].includes(i.name));
+        rangeNote.textContent = !connected && start === end ? "Adapter disabled: start and end are equal."
+            : !connected && start > end ? "Invalid range: start must not exceed end."
+            : "Range follows the model's denoising progression; a partial-denoise run may use only part of it.";
+    }
+    for (const widget of scheduleWidgets) {
+        const callback = widget.callback;
+        widget.callback = function(...args) { callback?.apply(this, args); refreshRange(); };
+    }
     const footer = element("div", "wn-mask-row wn-mask-between"); footer.append(dimensions, removeRef);
-    body.append(toolbar, sourceRow, decision, stage, footer);
+    body.append(toolbar, brushSettings, override, sourceRow, decision, stage, footer);
+    if (!maskOnly) root.append(rangeNote);
     root.append(row, body, note);
     const file = element("input"); file.type = "file"; file.accept = "image/*"; file.hidden = true; root.append(file);
     const dom = node.addDOMWidget("mask_editor", "wn_mask_editor", root, { serialize: false, hideOnZoom: false });
@@ -139,15 +184,11 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
     dom.options.getMaxHeight = () => height;
 
     function linked() { return node.inputs?.find(i => i.name === "image")?.link != null; }
-    function painted() { return maskOnly ? hasPaint : Boolean(data.value); }
+    function painted() { return coveredPixels > 0; }
     function remember() {
         const changed = Object.keys(saved).some(key => saved[key] !== node.properties.wnMask?.[key]);
         node.properties.wnMask = { ...saved };
-        if (maskOnly && data.value) {
-            const document = JSON.parse(data.value);
-            document.source = saved.reference?.asset || "";
-            data.value = JSON.stringify(document);
-        }
+        if (maskOnly && maskRecord?.document) writeDocument();
         if (changed) node.graph?.change();
         if (maskOnly && !restoring) app.extensionManager?.workflow?.activeWorkflow?.changeTracker?.captureCanvasState();
     }
@@ -156,16 +197,20 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
         toggle.textContent = saved.open ? "Hide mask" : "Edit mask";
         row.setAttribute("aria-expanded", String(saved.open));
         const canvasHeight = Math.min(480, (node.size[0] - 24) * mask.height / mask.width);
-        height = saved.open ? canvasHeight + 170 + (decision.hidden ? 0 : 78) : 35;
+        height = saved.open ? canvasHeight + 204 + (override.hidden ? 0 : 24) + (decision.hidden ? 0 : 78) : 35;
+        if (!maskOnly) height += 40;
         if (note.textContent) height += 30;
         root.style.height = `${height}px`;
         node.setSize([Math.max(360, node.size[0]), node.computeSize()[1]]);
         node.setDirtyCanvas(true, true);
-        render();
+        requestRender();
     }
     function message(text) { note.textContent = text; fit(); }
     function refresh() {
+        refreshRange();
         const maskLinked = node.inputs?.find(i => i.name === "mask")?.link != null;
+        root.setAttribute("data-external", String(maskLinked));
+        override.hidden = !maskLinked;
         state.textContent = maskLinked ? "Using MASK input" : (painted() ? "Painted" : "Empty");
         state.title = maskLinked ? "Disconnect MASK to use the saved painting." : "";
         dimensions.textContent = `${mask.width} × ${mask.height} px`;
@@ -173,120 +218,207 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
         source.disabled = busy;
         removeRef.hidden = !reference;
         sourceState.textContent = reference ? (saved.reference?.source || "Reference image") : "Blank canvas";
-        hint.hidden = Boolean(reference) || painted();
+        hint.hidden = Boolean(reference) || painted() || saved.grayscale;
         for (const button of toolButtons) button.setAttribute("aria-pressed", String(button.getAttribute("aria-label") === tool.value));
         undo.disabled = !history.length || busy;
         clear.disabled = !painted() || busy;
-        size.disabled = tool.value === "Rectangle";
+        size.disabled = softness.disabled = tool.value === "Rectangle";
+        grayscale.setAttribute("aria-pressed", String(saved.grayscale));
+        for (const input of [size, softness, opacity]) input.showValue();
         size.title = `Brush diameter: ${size.value} native pixels`;
-        render();
+        requestRender();
     }
-    function serializeMask() {
+    function countPixels() {
         const bytes = mctx.getImageData(0, 0, mask.width, mask.height).data;
-        let any = false;
-        for (let i = 3; i < bytes.length; i += 4) if (bytes[i]) { any = true; break; }
-        hasPaint = any;
-        // Standalone masks retain their exact dimensions even after Clear.
-        saved.width = mask.width; saved.height = mask.height;
-        data.value = any || maskOnly ? JSON.stringify({ v: 1, width: mask.width, height: mask.height, png: mask.toDataURL("image/png"), ...(!any ? { empty: true } : {}) }) : "";
-        remember(); node.graph?.change(); refresh();
+        let count = 0;
+        for (let i = 3; i < bytes.length; i += 4) if (bytes[i]) count++;
+        return count;
     }
-    function snapshot() { return { png: mask.toDataURL("image/png"), width: mask.width, height: mask.height, reference: saved.reference }; }
-    function push(value) {
-        history.push(value);
+    function writeDocument() {
+        const source = maskOnly ? saved.reference?.asset || "" : undefined;
+        if (!maskRecord.text || maskRecord.source !== source) {
+            maskRecord.text = JSON.stringify({ ...maskRecord.document, ...(maskOnly ? { source } : {}) });
+            maskRecord.source = source;
+        }
+        data.value = maskRecord.text;
+    }
+    function documentChanged() {
+        writeDocument(); remember(); node.graph?.change(); refresh(); requestRender(true);
+    }
+    function serializeMask(synchronous = false, notify = true) {
+        if (!maskDirty && maskRecord?.document) {
+            if (notify) documentChanged(); else writeDocument();
+            return;
+        }
+        if (!synchronous && !maskDirty && maskRecord?.ready) return;
+        saved.width = mask.width; saved.height = mask.height;
+        const record = { document: null, ready: null };
+        const document = { v: 1, width: mask.width, height: mask.height };
+        maskRecord = record; maskDirty = false;
+        const complete = png => {
+            record.document = { ...document, ...(png ? { png } : { empty: true }) };
+            trimHistory();
+            // Old encodes still resolve for undo, but cannot overwrite newer pixels/configure.
+            if (maskRecord === record && !removed) {
+                if (notify) documentChanged(); else writeDocument();
+            }
+            return record.document;
+        };
+        if (!painted() || synchronous) { complete(painted() ? mask.toDataURL("image/png") : null); return; }
+        record.ready = new Promise((resolve, reject) => mask.toBlob(blob => {
+            if (!blob) { reject(new Error("Could not encode the mask PNG.")); return; }
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(new Error("Could not read the mask PNG."));
+            reader.readAsDataURL(blob);
+        }, "image/png")).then(complete, error => {
+            if (maskRecord === record && !removed) { maskDirty = true; message(error.message); }
+            throw error;
+        });
+        // Undo can await the original rejection; avoid an unhandled background rejection.
+        record.ready.catch(() => {});
+    }
+    function snapshot() { return { record: maskRecord, pixels: coveredPixels, reference: saved.reference }; }
+    function trimHistory() {
         // Bound undo by both action count and encoded byte size.
-        let total = history.reduce((n, s) => n + s.png.length + (s.reference?.png?.length || 0), 0);
+        let total = history.reduce((n, s) => n + (s.record.document?.png?.length || 0) + (s.reference?.png?.length || 0), 0);
         while (history.length > 1 && (history.length > 20 || total > 64 * 1024 * 1024)) {
-            const old = history.shift(); total -= old.png.length + (old.reference?.png?.length || 0);
+            const old = history.shift(); total -= (old.record.document?.png?.length || 0) + (old.reference?.png?.length || 0);
         }
     }
+    function push(value) { history.push(value); trimHistory(); }
     async function restore(value) {
+        const revision = hydrationId;
         busy = true; refresh();
         try {
-            const [bitmap, ref] = await Promise.all([readImage(value.png), readReference(value.reference)]);
-            mask.width = value.width; mask.height = value.height;
-            mctx.drawImage(bitmap, 0, 0); reference = ref; saved.reference = value.reference;
-            serializeMask();
+            const document = value.record.document || await value.record.ready;
+            const [bitmap, ref] = await Promise.all([document.png ? readImage(document.png) : null, readReference(value.reference)]);
+            if (removed || revision !== hydrationId) return;
+            mask.width = document.width; mask.height = document.height;
+            if (bitmap) mctx.drawImage(bitmap, 0, 0);
+            coveredPixels = value.pixels; maskDirty = false; maskRecord = value.record;
+            reference = ref; saved.reference = value.reference; referenceDirty = true;
+            if (history.at(-1) === value) history.pop();
+            note.textContent = "";
+            saved.width = mask.width; saved.height = mask.height; documentChanged();
+        } catch (error) {
+            if (!removed && revision === hydrationId) message(`Cannot undo: ${error.message}`);
         } finally { busy = false; refresh(); fit(); }
     }
-    function drawComposite(ctx, width, height) {
-        ctx.clearRect(0, 0, width, height);
-        if (reference) ctx.drawImage(reference, 0, 0, width, height);
-        const tint = element("canvas"); tint.width = width; tint.height = height;
-        const tctx = tint.getContext("2d");
-        tctx.drawImage(mask, 0, 0, width, height);
-        tctx.globalCompositeOperation = "source-in"; tctx.fillStyle = "#d84d9d"; tctx.fillRect(0, 0, width, height);
-        ctx.globalAlpha = .45; ctx.drawImage(tint, 0, 0); ctx.globalAlpha = 1;
+    function requestRender(content = false) {
+        compositeDirty ||= content;
+        if (removed || frame !== null) return;
+        frame = requestAnimationFrame(() => { frame = null; if (!removed) render(); });
+    }
+    function writeTile(x, y, w, h, bytes) { mctx.putImageData(new ImageData(bytes, w, h), x, y); maskDirty = true; }
+    function flushGesture() {
+        if (!gesture || gesture.tool === "Rectangle") return;
+        if (gesture.samples.length) {
+            gesture.stroke.polyline([gesture.last, ...gesture.samples]);
+            gesture.last = gesture.samples.at(-1);
+        }
+        gesture.samples.length = 0;
+        if (gesture.stroke.flush(writeTile)) compositeDirty = true;
+        coveredPixels = gesture.before.pixels + gesture.stroke.pixelDelta;
     }
     function render() {
+        flushGesture();
+        hint.hidden = Boolean(reference) || painted() || Boolean(gesture?.stroke.changed) || saved.grayscale;
         const available = Math.max(100, node.size[0] - 24);
         const scale = Math.min(available / mask.width, 480 / mask.height);
         const width = Math.round(mask.width * scale), h = Math.round(mask.height * scale);
         const dpr = window.devicePixelRatio || 1;
-        canvas.width = Math.max(1, Math.round(width * dpr)); canvas.height = Math.max(1, Math.round(h * dpr));
+        const pixelWidth = Math.max(1, Math.round(width * dpr)), pixelHeight = Math.max(1, Math.round(h * dpr));
+        for (const surface of [canvas, composite, tint, referenceLayer]) {
+            if (surface.width !== pixelWidth) { surface.width = pixelWidth; compositeDirty = referenceDirty = true; }
+            if (surface.height !== pixelHeight) { surface.height = pixelHeight; compositeDirty = referenceDirty = true; }
+        }
         canvas.style.width = `${width}px`; canvas.style.height = `${h}px`;
+        composite.style.width = `${width}px`; composite.style.height = `${h}px`;
+        if (referenceDirty) {
+            const rctx = referenceLayer.getContext("2d"); rctx.clearRect(0, 0, pixelWidth, pixelHeight);
+            if (reference) rctx.drawImage(reference, 0, 0, pixelWidth, pixelHeight);
+            referenceDirty = false;
+        }
+        if (compositeDirty) {
+            const ctx = composite.getContext("2d"), tctx = tint.getContext("2d");
+            ctx.clearRect(0, 0, pixelWidth, pixelHeight);
+            if (saved.grayscale) { ctx.fillStyle = "black"; ctx.fillRect(0, 0, pixelWidth, pixelHeight); }
+            else ctx.drawImage(referenceLayer, 0, 0);
+            tctx.clearRect(0, 0, pixelWidth, pixelHeight);
+            tctx.globalCompositeOperation = "source-over"; tctx.drawImage(mask, 0, 0, pixelWidth, pixelHeight);
+            tctx.globalCompositeOperation = "source-in"; tctx.fillStyle = saved.grayscale ? "white" : "#d84d9d"; tctx.fillRect(0, 0, pixelWidth, pixelHeight);
+            tctx.globalCompositeOperation = "source-over";
+            ctx.globalAlpha = saved.grayscale ? 1 : .45; ctx.drawImage(tint, 0, 0); ctx.globalAlpha = 1;
+            const tc = thumb.getContext("2d"), ts = Math.min(74 / mask.width, 50 / mask.height);
+            tc.clearRect(0, 0, 74, 50);
+            tc.drawImage(composite, (74 - mask.width * ts) / 2, (50 - mask.height * ts) / 2, mask.width * ts, mask.height * ts);
+            compositeDirty = false;
+        }
         const ctx = canvas.getContext("2d");
-        drawComposite(ctx, canvas.width, canvas.height);
-        if (gesture && tool.value === "Rectangle") {
-            ctx.fillStyle = "#d84d9d"; ctx.globalAlpha = .45;
-            ctx.fillRect(gesture.start.x / mask.width * canvas.width, gesture.start.y / mask.height * canvas.height,
+        ctx.clearRect(0, 0, pixelWidth, pixelHeight);
+        if (!saved.open) return;
+        if (gesture?.tool === "Rectangle") {
+            ctx.strokeStyle = saved.grayscale ? "white" : "#d84d9d"; ctx.lineWidth = dpr;
+            ctx.strokeRect(gesture.start.x / mask.width * canvas.width, gesture.start.y / mask.height * canvas.height,
                 (gesture.last.x - gesture.start.x) / mask.width * canvas.width, (gesture.last.y - gesture.start.y) / mask.height * canvas.height);
-            ctx.globalAlpha = 1;
         }
         if (pointer && tool.value !== "Rectangle") {
             ctx.beginPath(); ctx.arc(pointer.x / mask.width * canvas.width, pointer.y / mask.height * canvas.height, Number(size.value) / mask.width * canvas.width / 2, 0, Math.PI * 2);
             ctx.strokeStyle = "#000"; ctx.lineWidth = 3 * dpr; ctx.stroke();
             ctx.strokeStyle = "#fff"; ctx.lineWidth = dpr; ctx.stroke();
         }
-        const tc = thumb.getContext("2d"); tc.clearRect(0, 0, 74, 50);
-        const ts = Math.min(74 / mask.width, 50 / mask.height);
-        tc.save(); tc.translate((74 - mask.width * ts) / 2, (50 - mask.height * ts) / 2);
-        drawComposite(tc, mask.width * ts, mask.height * ts); tc.restore();
     }
     function coords(event) {
         const rect = canvas.getBoundingClientRect();
         return { x: Math.max(0, Math.min(mask.width, (event.clientX - rect.left) / rect.width * mask.width)), y: Math.max(0, Math.min(mask.height, (event.clientY - rect.top) / rect.height * mask.height)) };
     }
-    function stroke(a, b) {
-        mctx.globalCompositeOperation = tool.value === "Eraser" ? "destination-out" : "source-over";
-        mctx.strokeStyle = "white"; mctx.fillStyle = "white";
-        mctx.lineWidth = Number(size.value); mctx.lineCap = mctx.lineJoin = "round";
-        mctx.beginPath(); mctx.moveTo(a.x, a.y); mctx.lineTo(b.x, b.y); mctx.stroke();
-        if (a.x === b.x && a.y === b.y) { mctx.beginPath(); mctx.arc(a.x, a.y, Number(size.value) / 2, 0, 2 * Math.PI); mctx.fill(); }
-        mctx.globalCompositeOperation = "source-over";
-    }
-    async function finish(commit) {
+    function finish(commit, notify = true) {
         if (!gesture) return;
+        if (commit) flushGesture();
         const action = gesture; gesture = null;
         if (canvas.hasPointerCapture(action.id)) canvas.releasePointerCapture(action.id);
-        if (!commit) { await restore(action.before); return; }
-        if (tool.value === "Rectangle") {
-            mctx.fillStyle = "white";
-            mctx.fillRect(Math.min(action.start.x, action.last.x), Math.min(action.start.y, action.last.y), Math.abs(action.last.x - action.start.x), Math.abs(action.last.y - action.start.y));
+        if (!commit) {
+            action.stroke.cancel(writeTile); coveredPixels = action.before.pixels;
+            maskRecord = action.before.record; maskDirty = false;
+            if (notify && maskRecord.document) documentChanged();
+            refresh(); requestRender(true); return;
         }
-        push(action.before); serializeMask();
+        if (action.tool === "Rectangle") {
+            action.stroke.rectangle(action.start, action.last); action.stroke.flush(writeTile);
+            coveredPixels = action.before.pixels + action.stroke.pixelDelta;
+        }
+        if (action.stroke.changed) { push(action.before); serializeMask(); }
+        refresh(); requestRender(true);
     }
     canvas.onpointerdown = event => {
-        if (busy || restoring || pending || event.button !== 0) return;
+        if (gesture || busy || restoring || pending || event.button !== 0 || Number(opacity.value) === 0) return;
         root.focus(); event.preventDefault(); event.stopPropagation();
-        const point = coords(event); gesture = { id: event.pointerId, start: point, last: point, before: snapshot() };
+        const point = coords(event);
+        gesture = { id: event.pointerId, tool: tool.value, start: point, last: point, before: snapshot(), samples: [point],
+            stroke: new MaskStroke(mask.width, mask.height, (x, y, w, h) => mctx.getImageData(x, y, w, h).data,
+                { size: Number(size.value), softness: Number(softness.value), opacity: Number(opacity.value), erase: tool.value === "Eraser" }) };
         canvas.setPointerCapture(event.pointerId);
-        if (tool.value !== "Rectangle") stroke(point, point);
-        pointer = point; render();
+        pointer = point; requestRender();
     };
     canvas.onpointermove = event => {
+        if (!saved.open) return;
         pointer = coords(event);
         if (gesture && gesture.id === event.pointerId) {
-            if (tool.value !== "Rectangle") stroke(gesture.last, pointer);
-            gesture.last = pointer;
+            if (gesture.tool === "Rectangle") gesture.last = pointer;
+            else {
+                const samples = event.getCoalescedEvents?.() || [];
+                for (const sample of samples) gesture.samples.push(coords(sample));
+                gesture.samples.push(pointer);
+            }
         }
-        render();
+        requestRender();
     };
-    canvas.onpointerup = event => { if (gesture?.id === event.pointerId) void finish(true); };
+    canvas.onpointerup = event => { if (gesture?.id === event.pointerId) { canvas.onpointermove(event); finish(true); } };
     canvas.onpointercancel = () => void finish(false);
     canvas.onlostpointercapture = () => void finish(false);
-    canvas.onpointerleave = () => { if (!gesture) { pointer = null; render(); } };
-    const blur = () => { pointer = null; void finish(false); };
+    canvas.onpointerleave = () => { if (!gesture) { pointer = null; requestRender(); } };
+    const blur = () => { pointer = null; finish(false); requestRender(); };
     window.addEventListener("blur", blur);
     root.onkeydown = event => {
         if (event.key === "Escape") { event.stopPropagation(); void finish(false); }
@@ -294,21 +426,27 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
     };
     for (const name of ["pointerdown", "pointermove", "pointerup", "wheel", "dblclick"]) root.addEventListener(name, e => e.stopPropagation());
     row.onclick = async () => { await finish(false); saved.open = !saved.open; remember(); fit(); };
-    size.oninput = () => { saved.brush = Number(size.value); remember(); refresh(); };
+    for (const [input, key] of [[size, "brush"], [softness, "softness"], [opacity, "opacity"]]) {
+        input.oninput = () => { finish(false); saved[key] = Number(input.value); remember(); refresh(); };
+    }
+    grayscale.onclick = () => { saved.grayscale = !saved.grayscale; remember(); refresh(); requestRender(true); };
     for (const button of toolButtons) button.onclick = async () => { await finish(false); tool.value = button.getAttribute("aria-label"); refresh(); };
-    undo.onclick = async () => { if (gesture || busy || !history.length) return; await restore(history.pop()); };
-    clear.onclick = () => { if (busy || gesture) return; push(snapshot()); mctx.clearRect(0, 0, mask.width, mask.height); serializeMask(); };
-    removeRef.onclick = () => { if (busy || gesture) return; push(snapshot()); reference = null; saved.reference = null; remember(); refresh(); fit(); };
+    undo.onclick = async () => { if (gesture || busy || restoring || !history.length) return; await restore(history.at(-1)); };
+    clear.onclick = () => { if (busy || gesture) return; push(snapshot()); mctx.clearRect(0, 0, mask.width, mask.height); coveredPixels = 0; maskDirty = true; serializeMask(); };
+    removeRef.onclick = () => { if (busy || gesture) return; push(snapshot()); reference = null; saved.reference = null; referenceDirty = true; remember(); refresh(); requestRender(true); fit(); };
     const oldMenu = node.getExtraMenuOptions;
     node.getExtraMenuOptions = function(...args) { oldMenu?.apply(this, args); args[1].push({content:"Open reference image…",callback:() => file.click()}); };
 
     async function adopt(image, asset) {
+        if (removed) return;
         await finish(false);
         const apply = () => {
             push(snapshot());
-            if (image.naturalWidth !== mask.width || image.naturalHeight !== mask.height) { mask.width = image.naturalWidth; mask.height = image.naturalHeight; }
-            reference = image; saved.reference = asset; saved.open = true; note.textContent = "";
-            serializeMask(); fit();
+            if (image.naturalWidth !== mask.width || image.naturalHeight !== mask.height) {
+                mask.width = image.naturalWidth; mask.height = image.naturalHeight; coveredPixels = 0; maskDirty = true;
+            }
+            reference = image; saved.reference = asset; referenceDirty = true; saved.open = true; note.textContent = "";
+            serializeMask(); remember(); refresh(); requestRender(true); fit();
         };
         if (painted() && (image.naturalWidth !== mask.width || image.naturalHeight !== mask.height)) {
             pending = apply; saved.open = true; decision.hidden = false; fit();
@@ -412,49 +550,84 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
         };
     }
     const oldConnections = node.onConnectionsChange;
-    node.onConnectionsChange = function(...args) { oldConnections?.apply(this, args); upstreamArmed = false; refresh(); };
+    node.onConnectionsChange = function(...args) { oldConnections?.apply(this, args); upstreamArmed = false; refresh(); fit(); };
     const oldResize = node.onResize;
     let previousWidth = node.size[0];
     node.onResize = function(...args) {
         oldResize?.apply(this, args);
         if (previousWidth !== node.size[0]) { previousWidth = node.size[0]; queueMicrotask(fit); }
-        render();
+        requestRender();
+    };
+    const displayResize = () => requestRender();
+    window.addEventListener("resize", displayResize);
+    const oldSerializeValue = data.serializeValue;
+    function checkpoint() { if (restoring) return; flushGesture(); serializeMask(true, false); }
+    data.serializeValue = function(...args) { checkpoint(); return oldSerializeValue ? oldSerializeValue.apply(this, args) : this.value; };
+    const oldSerialize = node.onSerialize;
+    node.onSerialize = function(info) {
+        checkpoint();
+        oldSerialize?.apply(this, arguments);
+        if (info.widgets_values) info.widgets_values[node.widgets.indexOf(data)] = data.value;
+        if (info.properties) info.properties.wnMask = maskSettings(saved, maskOnly);
     };
     const oldRemoved = node.onRemoved;
-    node.onRemoved = function(...args) { removed = true; gesture = null; pendingCleanup?.(); window.removeEventListener("blur", blur); root.remove(); oldRemoved?.apply(this, args); };
+    node.onRemoved = function(...args) {
+        finish(false, false); removed = true; hydrationId++; maskRecord = null;
+        if (frame !== null) cancelAnimationFrame(frame);
+        frame = null; pending = null; pendingCleanup?.();
+        window.removeEventListener("blur", blur); window.removeEventListener("resize", displayResize);
+        root.remove(); oldRemoved?.apply(this, args);
+    };
     const oldConfigure = node.onConfigure;
-    node.onConfigure = function(...args) { oldConfigure?.apply(this, args); void hydrate(); };
+    node.onConfigure = function(info) {
+        finish(false, false);
+        oldConfigure?.apply(this, arguments);
+        // Older graphs end with the nonserialized editor's empty widget slot.
+        for (const widget of scheduleWidgets) {
+            const value = info?.widgets_values?.[node.widgets.indexOf(widget)];
+            widget.value = value == null || value === "" ? scheduleDefaults[widget.name] : value;
+        }
+        refreshRange(); void hydrate();
+    };
     async function hydrate() {
+        const revision = ++hydrationId;
         restoring = true;
         try {
-            saved = { v: 1, open: maskOnly, brush: 60, ...node.properties.wnMask };
-            size.value = saved.brush;
+            const settings = maskSettings(node.properties.wnMask, maskOnly);
             const maskData = data.value ? JSON.parse(data.value) : null;
-            hasPaint = Boolean(maskData && !maskData.empty);
-            mask.width = maskData?.width || saved.width || 1024; mask.height = maskData?.height || saved.height || 1024;
-            if (maskData) mctx.drawImage(await readImage(maskData.png), 0, 0);
-            if (maskOnly && !saved.reference && maskData?.source) saved.reference = typeof maskData.source === "string"
+            maskRecord = null; maskDirty = false;
+            if (maskOnly && !settings.reference && maskData?.source) settings.reference = typeof maskData.source === "string"
                 ? { png: maskData.source, source: "Saved image" } : { asset: maskData.source, source: "Saved image" };
-            reference = await readReference(saved.reference);
-            if (saved.reference?.png) {
-                const { png, ...stored } = saved.reference;
+            const bitmap = maskData?.png ? await readImage(maskData.png) : null;
+            if (removed || revision !== hydrationId) return;
+            let ref = await readReference(settings.reference);
+            if (removed || revision !== hydrationId) return;
+            if (settings.reference?.png) {
+                const { png, ...stored } = settings.reference;
                 // Drop embedded bytes only after verifying or restoring the saved asset.
                 try {
                     if (!stored.asset) throw new Error("No saved asset");
-                    reference = await readReference(stored);
+                    ref = await readReference(stored);
                 } catch {
                     const response = await fetch(png);
                     stored.asset = await uploadReference(await response.blob());
-                    reference = await readReference(stored);
+                    ref = await readReference(stored);
                 }
-                saved.reference = stored;
-                remember();
+                settings.reference = stored;
             }
-            if (maskOnly) serializeMask();
-            history = []; refresh(); fit();
+            if (removed || revision !== hydrationId) return;
+            saved = settings;
+            size.value = saved.brush; softness.value = saved.softness; opacity.value = saved.opacity;
+            mask.width = maskData?.width || saved.width || 1024; mask.height = maskData?.height || saved.height || 1024;
+            if (bitmap) mctx.drawImage(bitmap, 0, 0);
+            coveredPixels = bitmap ? countPixels() : 0;
+            maskRecord = { document: maskData || { v: 1, width: mask.width, height: mask.height, empty: true } };
+            reference = ref; referenceDirty = true;
+            if (maskOnly) writeDocument();
+            history = []; remember(); refresh(); requestRender(true); fit();
             if (maskOnly) { restoring = false; remember(); }
-        } catch (error) { message(`Cannot restore mask: ${error.message}`); }
-        finally { restoring = false; }
+        } catch (error) { if (!removed && revision === hydrationId) message(`Cannot restore mask: ${error.message}`); }
+        finally { if (revision === hydrationId) restoring = false; }
     }
     void hydrate();
 }
