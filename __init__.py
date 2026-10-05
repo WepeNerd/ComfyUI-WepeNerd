@@ -15,6 +15,8 @@ from .speedpaint_node import register_speedpaint_routes
 from .web_cache import register_module_cache_headers
 from .qwen_edit_align import NODE_CLASS_MAPPINGS as QWEN_ALIGN_NODES
 from .qwen_edit_align import NODE_DISPLAY_NAME_MAPPINGS as QWEN_ALIGN_NAMES
+from .qwen_edit_mask_node import NODE_CLASS_MAPPINGS as QWEN_MASK_NODES
+from .qwen_edit_mask_node import NODE_DISPLAY_NAME_MAPPINGS as QWEN_MASK_NAMES
 
 WEB_DIRECTORY = "./js"
 NODE_CLASS_MAPPINGS = {
@@ -46,6 +48,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 
 NODE_CLASS_MAPPINGS.update(QWEN_ALIGN_NODES)
 NODE_DISPLAY_NAME_MAPPINGS.update(QWEN_ALIGN_NAMES)
+NODE_CLASS_MAPPINGS.update(QWEN_MASK_NODES)
+NODE_DISPLAY_NAME_MAPPINGS.update(QWEN_MASK_NAMES)
 
 register_speedpaint_routes()
 register_module_cache_headers()

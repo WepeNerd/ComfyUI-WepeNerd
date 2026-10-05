@@ -11,6 +11,7 @@ Resolution tools, painting and image warping, and spatial LoRA masks for ComfyUI
 | **Speedpaint** | Sketch from a blank canvas or imported image and output an IMAGE |
 | **Paint Mask** | Paint a MASK over an uploaded or connected image and pass the IMAGE downstream |
 | **Liquify Image** | Push-warp files or connected IMAGE batches with editable strokes and full-resolution output |
+| **Qwen Edit Mask** | Paint where a Qwen-Image 2.1 edit should happen and get a guided reference image, mask and prompt |
 | **Qwen Edit Measure Drift** | Measure translation or affine drift between a source and an edit |
 | **Qwen Edit Align Composite** | Align an edited image and composite through a supplied or automatic mask |
 | **Qwen Edit Difference Mask + Composite** | Detect visual edits, clean up the difference mask, and preserve source pixels outside it |
@@ -62,6 +63,10 @@ workflow.
   Try the [Liquify example](examples/liquify.json).
 - **Masked LoRA:** connect a native Krea2 MODEL, select a LoRA, and open **Edit mask**.
   Empty masks have no effect. This node is specific to Krea2 and remains in Beta.
+- **Qwen Edit Mask:** open or drop an image (or connect IMAGE and click **Load input**),
+  paint the area to change, and type the edit in `instruction`. Connect `image` to
+  `image_1` and `prompt` to `prompt` on **Text Encode Qwen Image 2.1**, and set the
+  encoder's `resolution` to 0. See the [guide options](docs/nodes.md#qwen-edit-mask).
 - **Qwen Edit Align:** find the three nodes under **WepeNerd/Qwen Edit Align**.
   Connect the original to `source` and the generated edit to `edited` on
   **Qwen Edit Difference Mask + Composite**. Preview `mask` or `preview`, tune

@@ -138,6 +138,52 @@ cropping. Supports upscaling and downscaling with ComfyUI's **lanczos** (default
 **Category:** `WepeNerd/Qwen Edit Align`. These operate on decoded images and
 work with other image editors too. No model patch or RoPE correction is included.
 
+### Qwen Edit Mask
+
+**Outputs:** `image`, `source`, `mask`, `mask_image`, `prompt`.
+
+Marks the region a Qwen-Image 2.1 edit should change, using the model's
+region-editing input: an outline, painted marks, or a separate mask image. It
+paints with the same editor as Paint Mask (brush, rectangle, eraser, Size,
+Softness, Opacity, Undo, Clear, grayscale view). Open or drop an image, or
+connect IMAGE and click **Load input**.
+
+- `guide`: how the region is shown to the model. `outline` draws a ring just
+  outside the painted area and keeps the area itself visible. `tint` lays 50%
+  colour over it. `solid` paints over it, so the model cannot see what was
+  there (useful for replacements). `none (use mask_image)` leaves `image`
+  clean; connect `mask_image` to `image_2` instead.
+- `color`: guide colour. Choose one that does not already appear in the region.
+- `fill_holes`: on by default, so a loop drawn around an object selects
+  everything inside it. Turn it off to keep painted holes.
+- `line_px`: outline thickness at output size.
+- `resolution`: the same resize rule as Text Encode Qwen Image 2.1: about
+  resolution × resolution pixels, in multiples of 32, keeping the aspect ratio.
+  0 keeps the image size, rounded to 32. The editor footer shows the output size
+  after the arrow.
+- `instruction`: the edit, such as `replace it with a glass vase`.
+
+Connect `image` to `image_1` on **Text Encode Qwen Image 2.1** and set that
+node's `resolution` to 0. The image is already on the Qwen grid, so a second
+resize cannot move the guide. Use the encoder's `latent` output so sampling uses
+the same size. That latent is empty, so sample the full schedule (denoise 1,
+first sigma 1.0). Starting lower on an empty latent can give jumbled,
+collage-like results. `prompt` wraps the instruction with a description of the guide
+and asks the model to remove the marks and leave the rest alone. For example:
+*In <image1>, edit only the area inside the red outline: replace it with a
+glass vase. Remove the red outline. Keep everything outside that area
+unchanged.* You can also ignore `prompt` and write your own.
+
+To guarantee that nothing outside the region changes, connect `source` and the
+decoded result to **Qwen Edit Align Composite**, with `mask` as `edit_mask`.
+The outline sits just outside `mask`, so the composite also restores those
+pixels from the clean `source`. Keep `grow_px` and `feather_px` there at or
+below `line_px` so leftover outline colour is not pasted back.
+
+Painting is saved with the workflow in the same way as Paint Mask. A connected
+IMAGE batch is processed as a batch, with the same mask on every image. Qwen
+reads only the first reference image in each slot.
+
 ### Qwen Edit Measure Drift
 
 Connect one `source` and one `edited` image. `translation` estimates horizontal
@@ -331,6 +377,15 @@ a preview; the **Grayscale mask** toggle displays the saved coverage directly.
 For an opened file, output uses its exact oriented dimensions; Clear keeps those
 dimensions. IMAGE returns the original RGB image without the mask overlay.
 Without an image, the canvas and IMAGE output are black at 1024 × 1024.
+
+**Fill enclosed areas** (paint-bucket button) fills the inside of every closed
+outline, so you can trace around an object and then fill it in one click. Pixels
+that the outside of the canvas cannot reach without crossing paint are filled at
+the current Opacity; diagonal corners count as closed. If the outline has a gap,
+nothing fills and the editor says so; close the gap and try again. With a soft
+brush, the fill also covers the stroke's inner soft edge up to its solid centre,
+so no seam is left; the outer soft edge is unchanged. Fill never lowers coverage. Undo reverts a fill in one
+step. Qwen Edit Mask and Load LoRA Masked use the same editor and get the button too.
 
 For a connected **image**, **Load input** queues its upstream path to load the
 first batch image, even when a preview is already available. Upstream seed controls

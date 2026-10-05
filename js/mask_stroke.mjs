@@ -113,3 +113,47 @@ export class MaskStroke {
         this.tiles.clear(); this.dirty.clear();
     }
 }
+
+// Fill areas fully enclosed by paint. `bytes` is the mask's RGBA data (alpha = coverage).
+// Pixels below half of the strongest painted coverage are open; open pixels that cannot
+// reach the image border through other open pixels (4-connected) are enclosed. The fill
+// then climbs the inner soft edge of the surrounding strokes, moving only to neighbours
+// with equal or higher coverage, so it meets each stroke's solid centre without a seam
+// and never crosses to the stroke's outer edge. Filled pixels are raised to `opacity`
+// coverage (never lowered). Edits `bytes` in place and returns how many pixels changed
+// and how many went from empty to painted.
+export function fillEnclosed(bytes, width, height, opacity = 1) {
+    const result = { changed: 0, pixelDelta: 0 };
+    const target = Math.round(255 * Math.min(1, Math.max(0, opacity)));
+    const count = width * height;
+    let peak = 0;
+    for (let i = 3; i < bytes.length; i += 4) if (bytes[i] > peak) peak = bytes[i];
+    if (!target || !peak) return result;
+    const wall = Math.max(1, Math.ceil(peak / 2));
+    const alpha = p => bytes[p * 4 + 3];
+    // 1 = reachable from the border (outside), 2 = filled.
+    const mark = new Uint8Array(count), stack = new Int32Array(count);
+    let top = 0;
+    const neighbours = (p, visit) => {
+        const x = p % width;
+        if (x > 0) visit(p - 1, p);
+        if (x < width - 1) visit(p + 1, p);
+        if (p >= width) visit(p - width, p);
+        if (p < count - width) visit(p + width, p);
+    };
+    const outside = q => { if (!mark[q] && alpha(q) < wall) { mark[q] = 1; stack[top++] = q; } };
+    for (let x = 0; x < width; x++) { outside(x); outside((height - 1) * width + x); }
+    for (let y = 0; y < height; y++) { outside(y * width); outside(y * width + width - 1); }
+    while (top) neighbours(stack[--top], outside);
+    for (let p = 0; p < count; p++) if (!mark[p] && alpha(p) < wall) { mark[p] = 2; stack[top++] = p; }
+    const uphill = (q, from) => { if (!mark[q] && alpha(q) >= alpha(from)) { mark[q] = 2; stack[top++] = q; } };
+    while (top) neighbours(stack[--top], uphill);
+    for (let p = 0; p < count; p++) {
+        const a = p * 4 + 3, initial = bytes[a];
+        if (mark[p] !== 2 || initial >= target) continue;
+        bytes[a] = target; bytes[a - 3] = bytes[a - 2] = bytes[a - 1] = 255;
+        result.changed++;
+        if (!initial) result.pixelDelta++;
+    }
+    return result;
+}

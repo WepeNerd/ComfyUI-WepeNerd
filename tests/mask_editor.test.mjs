@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import vm from "node:vm";
-import { MaskStroke, maskSettings } from "../js/mask_stroke.mjs";
+import { MaskStroke, fillEnclosed, maskSettings } from "../js/mask_stroke.mjs";
 
 const source = readFileSync(new URL("../js/wn_masked_lora.js", import.meta.url), "utf8")
     .replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, "");
@@ -49,7 +49,7 @@ async function fixture(maskOnly, saved = { v: 1, width: 1536, height: 1024, png:
     const context = vm.createContext({
         document: { createElement: element, createElementNS: (_, tag) => element(tag), head: { append() {} } },
         window: { devicePixelRatio: 1, addEventListener() {}, removeEventListener() {} },
-        app: { registerExtension() {} }, api: {}, queueMicrotask, MaskStroke, maskSettings,
+        app: { registerExtension() {} }, api: {}, queueMicrotask, MaskStroke, fillEnclosed, maskSettings,
         requestAnimationFrame: callback => { frames.set(++frameId, callback); return frameId; },
         cancelAnimationFrame: id => frames.delete(id),
         Image: class { set src(value) { imageReads.push(value); this.alpha = Number(value?.split(",")[1]); queueMicrotask(() => images.fail ? this.onerror() : this.onload()); } },
@@ -102,6 +102,13 @@ for (const maskOnly of [false, true]) {
         assert.equal(restored.state(), "Empty");
         assert.equal(restored.imageReads.includes(undefined), false);
         assert.equal(restored.button("Clear mask").disabled, true);
+    });
+
+    test(`${name}: Fill sits in the toolbar and is enabled only when something is painted`, async () => {
+        const f = await fixture(maskOnly);
+        assert.equal(f.button("Fill enclosed areas").disabled, false);
+        f.button("Clear mask").click();
+        assert.equal(f.button("Fill enclosed areas").disabled, true);
     });
 
     test(`${name}: legacy empty state and MASK override preserve painting`, async () => {

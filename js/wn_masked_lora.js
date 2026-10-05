@@ -1,9 +1,21 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import { executionId, imageAncestors, upstreamNodes } from "./mask_input.mjs";
-import { MaskStroke, maskSettings } from "./mask_stroke.mjs";
+import { MaskStroke, fillEnclosed, maskSettings } from "./mask_stroke.mjs";
 
 const NODE = "WepeNerdLoadLoraMasked";
+// Nodes that share the standalone mask editor, with their accessible editor names.
+const MASK_ONLY = { WN_PaintMask: "Paint Mask editor", WN_QwenEditMask: "Qwen Edit Mask editor" };
+// Mirrors qwen_size() in qwen_edit_mask_node.py and TextEncodeQwenImage21's reference resize.
+export function qwenSize(width, height, resolution) {
+    // Python's round() ties to even, e.g. 1040 px snaps to 1024, not 1056.
+    const even = value => { const low = Math.floor(value), rest = value - low; return rest > .5 || (rest === .5 && low % 2) ? low + 1 : low; };
+    const snap = value => Math.max(32, even(value / 32) * 32);
+    if (!(resolution > 0)) return [snap(width), snap(height)];
+    const ratio = width / height;
+    return [snap(Math.sqrt(resolution * resolution * ratio)), snap(Math.sqrt(resolution * resolution / ratio))];
+}
+const OUTPUT_SIZE = { WN_QwenEditMask: (node, width, height) => qwenSize(width, height, Number(node.widgets.find(w => w.name === "resolution")?.value ?? 1024)) };
 const style = document.createElement("style");
 style.textContent = `.wn-mask-editor{--wn-accent:#efa5cd;font:12px var(--comfy-font-family,Arial,sans-serif);color:var(--input-text,#ddd);box-sizing:border-box;padding:0 0 8px;display:flex;flex-direction:column;gap:8px;width:100%}
 .wn-mask-editor *{box-sizing:border-box}.wn-mask-editor button{font:inherit;color:var(--input-text,#ddd);background:var(--comfy-input-bg,#25262a);border:1px solid var(--border-color,#494d57);border-radius:5px;padding:6px 9px;cursor:pointer}
@@ -41,7 +53,7 @@ function readReference(reference) {
         type: reference.asset.type,
     })}`));
 }
-export function setupMaskedLora(node, { maskOnly = false } = {}) {
+export function setupMaskedLora(node, { maskOnly = false, label = "", outputSize = null } = {}) {
     const data = node.widgets.find(w => w.name === "mask_data");
     Object.assign(data, { type: "wn_hidden", computeSize: () => [0, -4], draw() {}, mouse: () => false });
     node.properties ||= {};
@@ -82,7 +94,7 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
     const mctx = mask.getContext("2d", { willReadFrequently: true });
     const root = element("div", "wn-mask-editor");
     root.tabIndex = 0;
-    root.setAttribute("aria-label", maskOnly ? "Paint Mask editor" : "Masked LoRA editor");
+    root.setAttribute("aria-label", label || (maskOnly ? "Paint Mask editor" : "Masked LoRA editor"));
     const row = element("button", "wn-mask-row wn-mask-fold");
     row.setAttribute("aria-expanded", "false");
     const thumb = element("canvas");
@@ -115,6 +127,8 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
     size.setAttribute("aria-label", "Brush size");
     const undo = iconButton("Undo", "undo-2");
     const clear = iconButton("Clear mask", "trash-2");
+    const fill = iconButton("Fill enclosed areas", null, ["m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z", "m5 2 5 5", "M2 13h15", "M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"]);
+    fill.title = "Fill enclosed areas: paint the inside of every closed outline at the current Opacity.";
     const grayscale = iconButton("Grayscale mask", null, ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z", "M12 3v18M12 6h6M12 9h8M12 12h9M12 15h8M12 18h6"]);
     grayscale.title = "Inspect saved painting as grayscale coverage (black 0, white 1).";
     function control(label, input, unit) {
@@ -135,7 +149,7 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
     brushSettings.append(control("Softness", softness, "%"), control("Opacity", opacity, "%"));
     const source = element("button");
     source.title = maskOnly ? "Run the connected upstream path and load its first image. Never runs downstream nodes." : "Load a snapshot of the first image in the connected batch. Never runs downstream nodes.";
-    toolbar.append(brush, rectangle, eraser, control("Size", size, "px"), undo, clear, grayscale);
+    toolbar.append(brush, rectangle, eraser, control("Size", size, "px"), fill, undo, clear, grayscale);
     const override = element("div", "wn-mask-override"); override.hidden = true;
     override.textContent = "Saved painting only — disconnect MASK to apply it.";
     const sourceRow = element("div", "wn-mask-row wn-mask-between");
@@ -155,7 +169,7 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
     const hint = element("span", "wn-mask-hint"); hint.textContent = "Drop image or paint here";
     stage.append(composite, canvas, hint);
     const dimensions = element("div", "wn-mask-note");
-    dimensions.title = maskOnly ? "MASK output uses these exact dimensions. Painted areas are white (1); untouched areas are black (0)." : "The mask maps proportionally to the output image grid. A blank square mask stretches on non-square outputs. Load an image with the intended aspect ratio for aligned painting.";
+    dimensions.title = outputSize ? "Painted at the image's own size. All outputs are resized to the size after the arrow (the Qwen reference grid)." : maskOnly ? "MASK output uses these exact dimensions. Painted areas are white (1); untouched areas are black (0)." : "The mask maps proportionally to the output image grid. A blank square mask stretches on non-square outputs. Load an image with the intended aspect ratio for aligned painting.";
     const note = element("div", "wn-mask-note"); note.setAttribute("role", "status");
     const rangeNote = element("div", "wn-mask-note"); rangeNote.setAttribute("role", "status");
     const scheduleDefaults = { start_percent: 0, end_percent: 1, apply_to: "Both" };
@@ -167,6 +181,11 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
         rangeNote.textContent = !connected && start === end ? "Adapter disabled: start and end are equal."
             : !connected && start > end ? "Invalid range: start must not exceed end."
             : "Range follows the model's denoising progression; a partial-denoise run may use only part of it.";
+    }
+    // Widgets that change the output size refresh the dimension note.
+    for (const widget of outputSize ? node.widgets.filter(w => w !== data) : []) {
+        const callback = widget.callback;
+        widget.callback = function(...args) { callback?.apply(this, args); refresh(); };
     }
     for (const widget of scheduleWidgets) {
         const callback = widget.callback;
@@ -213,7 +232,8 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
         override.hidden = !maskLinked;
         state.textContent = maskLinked ? "Using MASK input" : (painted() ? "Painted" : "Empty");
         state.title = maskLinked ? "Disconnect MASK to use the saved painting." : "";
-        dimensions.textContent = `${mask.width} × ${mask.height} px`;
+        const output = outputSize?.(node, mask.width, mask.height);
+        dimensions.textContent = `${mask.width} × ${mask.height} px${output && (output[0] !== mask.width || output[1] !== mask.height) ? ` → ${output[0]} × ${output[1]}` : ""}`;
         source.textContent = linked() ? (upstreamArmed ? "Run upstream" : "Load input") : "Open image";
         source.disabled = busy;
         removeRef.hidden = !reference;
@@ -222,6 +242,7 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
         for (const button of toolButtons) button.setAttribute("aria-pressed", String(button.getAttribute("aria-label") === tool.value));
         undo.disabled = !history.length || busy;
         clear.disabled = !painted() || busy;
+        fill.disabled = !painted() || busy || Number(opacity.value) === 0;
         size.disabled = softness.disabled = tool.value === "Rectangle";
         grayscale.setAttribute("aria-pressed", String(saved.grayscale));
         for (const input of [size, softness, opacity]) input.showValue();
@@ -433,6 +454,19 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
     for (const button of toolButtons) button.onclick = async () => { await finish(false); tool.value = button.getAttribute("aria-label"); refresh(); };
     undo.onclick = async () => { if (gesture || busy || restoring || !history.length) return; await restore(history.at(-1)); };
     clear.onclick = () => { if (busy || gesture) return; push(snapshot()); mctx.clearRect(0, 0, mask.width, mask.height); coveredPixels = 0; maskDirty = true; serializeMask(); };
+    fill.onclick = async () => {
+        if (busy || gesture || restoring) return;
+        await finish(false);
+        const image = mctx.getImageData(0, 0, mask.width, mask.height);
+        const before = snapshot();
+        const result = fillEnclosed(image.data, mask.width, mask.height, Number(opacity.value) / 100);
+        if (!result.changed) { message("Nothing to fill: no closed outline found. Close any gaps in the outline and try again."); return; }
+        push(before);
+        mctx.putImageData(image, 0, 0);
+        coveredPixels += result.pixelDelta; maskDirty = true;
+        if (note.textContent) message("");
+        serializeMask();
+    };
     removeRef.onclick = () => { if (busy || gesture) return; push(snapshot()); reference = null; saved.reference = null; referenceDirty = true; remember(); refresh(); requestRender(true); fit(); };
     const oldMenu = node.getExtraMenuOptions;
     node.getExtraMenuOptions = function(...args) { oldMenu?.apply(this, args); args[1].push({content:"Open reference image…",callback:() => file.click()}); };
@@ -635,8 +669,11 @@ export function setupMaskedLora(node, { maskOnly = false } = {}) {
 app.registerExtension({
     name: "wepenerd.masked_lora",
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (nodeData.name !== NODE && nodeData.name !== "WN_PaintMask") return;
+        if (nodeData.name !== NODE && !(nodeData.name in MASK_ONLY)) return;
         const created = nodeType.prototype.onNodeCreated;
-        nodeType.prototype.onNodeCreated = function(...args) { created?.apply(this, args); setupMaskedLora(this, { maskOnly: nodeData.name === "WN_PaintMask" }); };
+        nodeType.prototype.onNodeCreated = function(...args) {
+            created?.apply(this, args);
+            setupMaskedLora(this, { maskOnly: nodeData.name in MASK_ONLY, label: MASK_ONLY[nodeData.name], outputSize: OUTPUT_SIZE[nodeData.name] });
+        };
     },
 });
