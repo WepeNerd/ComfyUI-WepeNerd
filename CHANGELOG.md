@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add Frame Number Selector: a preset-filtered dropdown of legal frame counts for LTX
+  (8n+1), MiniMax H3 (17n+5), Wan and Hunyuan (4n+1) and Mochi (6n+1), outputting
+  `frames`, `fps` and `seconds`. Presets are editable in `frame_number_presets.json`.
 - Mask editor: add **Fill enclosed areas**, which fills the inside of closed painted
   outlines at the current Opacity (Paint Mask, Qwen Edit Mask, Load LoRA Masked).
 - Add Qwen Edit Mask: paint the region a Qwen-Image 2.1 edit should change and get the

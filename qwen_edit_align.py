@@ -1,4 +1,4 @@
-"""Image-space registration and selective compositing of Qwen edits."""
+"""Image-space registration and selective compositing of image edits."""
 
 import json
 import logging
@@ -90,7 +90,7 @@ def _phase_correlation(a, b, weight):
     return torch.tensor([sx - w if sx > w / 2 else sx, sy - h if sy > h / 2 else sy])
 
 
-def estimate_warp(source, edited, mask=None, mode="translation", ignore_border=8, iters=40):
+def estimate_warp(source, edited, mask=None, mode="affine", ignore_border=8, iters=40):
     """Robust image registration; positive t means the edit drifted right/down."""
     h, w = source.shape[1:3]
     S, E = _gray(source), _gray(edited)
@@ -106,10 +106,10 @@ def estimate_warp(source, edited, mask=None, mode="translation", ignore_border=8
     A, t = torch.eye(2), torch.zeros(2)
     usable = weight > 0.5
     if int(usable.sum()) < 8 or min(h, w) < 3:
-        logging.warning("[Qwen Edit Align] No usable background for registration; using zero drift.")
+        logging.warning("[Image Edit Align] No usable background for registration; using zero drift.")
         return A, t
     if float(S[usable].std()) < 1e-5 or float(E[usable].std()) < 1e-5:
-        logging.warning("[Qwen Edit Align] Background has no texture; using zero drift.")
+        logging.warning("[Image Edit Align] Background has no texture; using zero drift.")
         return A, t
     if torch.equal(S, E):
         return A, t
@@ -239,25 +239,59 @@ def _composite(source, edited, mask):
     return torch.where(mask > 0, source * (1 - mask) + edited * mask, source)
 
 
+def _difference_mask(source, edited, valid, threshold, diff_mode="color (max RGB)",
+                     pre_blur_px=2, min_region_px=64, fill_holes=True, limit=None):
+    a = _blur(source[..., :3].movedim(-1, 1), pre_blur_px)
+    b = _blur(edited[..., :3].movedim(-1, 1), pre_blur_px)
+    weights = torch.tensor([0.299, 0.587, 0.114]).view(1, 3, 1, 1)
+    if diff_mode == "luminance":
+        diff = ((a - b) * weights).sum(1, keepdim=True).abs()
+    elif diff_mode == "chroma":
+        ca = a - (a * weights).sum(1, keepdim=True)
+        cb = b - (b * weights).sum(1, keepdim=True)
+        diff = (ca - cb).abs().amax(1, keepdim=True)
+    else:
+        diff = (a - b).abs().amax(1, keepdim=True)
+    if source.shape[-1] == 4:
+        alpha_diff = _blur((source[..., 3:] - edited[..., 3:]).movedim(-1, 1), pre_blur_px).abs()
+        diff = torch.maximum(diff, alpha_diff)
+    binary = (diff > threshold) & valid
+    if limit is not None:
+        binary &= limit > 0
+    mb = binary[0, 0].numpy()
+    if min_region_px > 0:
+        labels, _ = ndimage.label(mb, structure=np.ones((3, 3)))
+        keep = np.bincount(labels.ravel()) >= min_region_px
+        keep[0] = False
+        mb = keep[labels]
+    if fill_holes:
+        mb = ndimage.binary_fill_holes(mb)
+    return torch.from_numpy(mb.astype(np.float32))[None, None], diff
+
+
 class QwenEditMeasureShift:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
                     "source": ("IMAGE",),
                     "edited": ("IMAGE",),
-                    "mode": (["translation", "affine"],),
-                    "ignore_border_px": ("INT", {"default": 8, "min": 0, "max": 256}),
+                    "mode": (["translation", "affine"], {"default": "affine", "advanced": True,
+                                                        "tooltip": "Affine corrects shift, scale, rotation and shear. Translation fits shift only."}),
+                    "ignore_border_px": ("INT", {"default": 8, "min": 0, "max": 256, "advanced": True}),
                 },
                 "optional": {"edit_mask": ("MASK", {"tooltip": "Region that was meant to change (excluded from the fit)."})}}
 
     RETURN_TYPES = ("FLOAT", "FLOAT", "STRING")
     RETURN_NAMES = ("drift_x_px", "drift_y_px", "warp_params")
     FUNCTION = "measure"
-    CATEGORY = "WepeNerd/Qwen Edit Align"
+    CATEGORY = "WepeNerd/Image Edit"
 
-    DESCRIPTION = "Measure one image pair. Positive drift means right/down, in source pixels."
+    DESCRIPTION = (
+        "Optional measurement for Qwen, Krea2 and other image edits. Align Composite already measures drift itself. "
+        "Use warp_params to reuse this fit. Positive drift means right/down, in source pixels."
+    )
 
-    def measure(self, source, edited, mode, ignore_border_px, edit_mask=None):
+    def measure(self, source, edited, mode="affine", ignore_border_px=8, edit_mask=None):
         if len(source) != 1 or len(edited) != 1:
             raise ValueError("Measure Drift reports one image pair. Select one image from each batch; Align Composite handles batches directly.")
         src, ed = _images(source, edited)
@@ -273,25 +307,32 @@ class QwenEditAlignComposite:
         return {"required": {
                     "source": ("IMAGE",),
                     "edited": ("IMAGE",),
-                    "mode": (["translation", "affine"],),
-                    "auto_mask_threshold": ("FLOAT", {"default": 0.06, "min": 0.0, "max": 1.0, "step": 0.005,
-                                                      "tooltip": "Used when no mask is given: per-pixel change that counts as 'edited'."}),
-                    "grow_px": ("INT", {"default": 12, "min": 0, "max": 256}),
-                    "feather_px": ("INT", {"default": 8, "min": 0, "max": 256}),
+                    "mode": (["translation", "affine"], {"default": "affine", "advanced": True,
+                                                        "tooltip": "Affine corrects shift, scale, rotation and shear. Connected warp_params overrides this setting."}),
+                    "auto_mask_threshold": ("FLOAT", {"default": 0.08, "min": 0.0, "max": 1.0, "step": 0.005,
+                                                      "tooltip": "Without edit_mask: lower detects smaller changes; higher preserves more source pixels."}),
+                    "grow_px": ("INT", {"default": 2, "min": 0, "max": 256}),
+                    "feather_px": ("INT", {"default": 2, "min": 0, "max": 256}),
                 },
                 "optional": {
-                    "edit_mask": ("MASK",),
-                    "warp_params": ("STRING", {"forceInput": True, "tooltip": "From QwenEditMeasureShift; re-measured if omitted."}),
+                    "edit_mask": ("MASK", {"tooltip": "Region in source coordinates to keep from the edit; also excluded from the alignment fit. White selects the edit."}),
+                    "warp_params": ("STRING", {"forceInput": True, "tooltip": "Optional fit from Image Edit Measure Drift. Uses the complete transform regardless of mode. Leave disconnected for automatic alignment."}),
                 }}
 
     RETURN_TYPES = ("IMAGE", "IMAGE", "MASK", "STRING")
     RETURN_NAMES = ("composite", "aligned_edit", "mask", "warp_params")
     FUNCTION = "run"
-    CATEGORY = "WepeNerd/Qwen Edit Align"
+    CATEGORY = "WepeNerd/Image Edit"
 
-    DESCRIPTION = "Align the edit to the source, then blend only the masked region. White selects the edit."
+    DESCRIPTION = (
+        "Connect source and edited for automatic affine alignment and selective compositing. "
+        "Works with Qwen, Krea2 and other image edits; no Measure Drift node is needed. "
+        "An optional edit_mask selects the edit region; otherwise a cleaned difference mask is generated. "
+        "Use Image Edit Difference Mask for mask preview and cleanup controls."
+    )
 
-    def run(self, source, edited, mode, auto_mask_threshold, grow_px, feather_px, edit_mask=None, warp_params=None):
+    def run(self, source, edited, mode="affine", auto_mask_threshold=0.08, grow_px=2, feather_px=2,
+            edit_mask=None, warp_params=None):
         src, ed = _images(source, edited)
         count, h, w = src.shape[:3]
         masks = _mask(edit_mask, count, h, w)
@@ -304,9 +345,7 @@ class QwenEditAlignComposite:
             aligned, valid = _warp(e.movedim(-1, 1), A, t)
             aligned = aligned.clamp(0, 1).movedim(1, -1)
             if m is None:
-                diff = (aligned - s).abs().amax(-1)[:, None]
-                diff = F.avg_pool2d(diff, 5, 1, 2, count_include_pad=False)
-                m = (diff > auto_mask_threshold).float()
+                m, _ = _difference_mask(s, aligned, valid, auto_mask_threshold)
             m = _finish_mask(m, grow_px, feather_px, valid)
             composites.append(_composite(s, aligned, m))
             aligned_images.append(aligned)
@@ -327,14 +366,14 @@ class QwenEditDiffMask:
                     "edited": ("IMAGE",),
                     "threshold": ("FLOAT", {"default": 0.08, "min": 0.0, "max": 1.0, "step": 0.005,
                                             "tooltip": "How different a pixel must be to count as edited. Lower = bigger mask."}),
-                    "align_first": ("BOOLEAN", {"default": True,
-                                                "tooltip": "Undo the Qwen drift before diffing. Without it a 3 px shift lights up every edge."}),
-                    "diff_mode": (["color (max RGB)", "luminance", "chroma"],),
-                    "pre_blur_px": ("INT", {"default": 2, "min": 0, "max": 32,
+                    "align_first": ("BOOLEAN", {"default": True, "advanced": True,
+                                                "tooltip": "Correct shift, scale, rotation and shear before comparison. Disable for images already aligned upstream."}),
+                    "diff_mode": (["color (max RGB)", "luminance", "chroma"], {"advanced": True}),
+                    "pre_blur_px": ("INT", {"default": 2, "min": 0, "max": 32, "advanced": True,
                                             "tooltip": "Blur both images before diffing to ignore VAE noise / fine texture changes."}),
-                    "min_region_px": ("INT", {"default": 64, "min": 0, "max": 1000000,
+                    "min_region_px": ("INT", {"default": 64, "min": 0, "max": 1000000, "advanced": True,
                                               "tooltip": "Drop isolated blobs smaller than this many pixels."}),
-                    "fill_holes": ("BOOLEAN", {"default": True}),
+                    "fill_holes": ("BOOLEAN", {"default": True, "advanced": True}),
                     "grow_px": ("INT", {"default": 2, "min": -128, "max": 256, "tooltip": "Expand (or shrink, if negative) the mask."}),
                     "feather_px": ("INT", {"default": 2, "min": 0, "max": 256, "tooltip": "Soft edge for the blend."}),
                 },
@@ -345,16 +384,17 @@ class QwenEditDiffMask:
     RETURN_TYPES = ("IMAGE", "MASK", "IMAGE", "IMAGE")
     RETURN_NAMES = ("composite", "mask", "preview", "difference")
     FUNCTION = "run"
-    CATEGORY = "WepeNerd/Qwen Edit Align"
+    CATEGORY = "WepeNerd/Image Edit"
 
     DESCRIPTION = (
-        "Detect additions and removals, then paste changed pixels onto the source. "
+        "Automatically align Qwen, Krea2 or other image edits with an affine fit, "
+        "detect additions and removals, then paste changed pixels onto the source. "
         "This detects visual differences, not object semantics. Preview the mask and "
         "use limit_mask when other parts of the image were also redrawn."
     )
 
-    def run(self, source, edited, threshold, align_first, diff_mode, pre_blur_px, min_region_px,
-            fill_holes, grow_px, feather_px, limit_mask=None):
+    def run(self, source, edited, threshold=0.08, align_first=True, diff_mode="color (max RGB)",
+            pre_blur_px=2, min_region_px=64, fill_holes=True, grow_px=2, feather_px=2, limit_mask=None):
         src, ed = _images(source, edited)
         count, h, w = src.shape[:3]
         limits = _mask(limit_mask, count, h, w)
@@ -365,32 +405,8 @@ class QwenEditDiffMask:
             A, t = estimate_warp(s, e, limit) if align_first else (torch.eye(2), torch.zeros(2))
             aligned, valid = _warp(e.movedim(-1, 1), A, t)
             e = aligned.clamp(0, 1).movedim(1, -1)
-            a = _blur(s[..., :3].movedim(-1, 1), pre_blur_px)
-            b = _blur(e[..., :3].movedim(-1, 1), pre_blur_px)
-            weights = torch.tensor([0.299, 0.587, 0.114]).view(1, 3, 1, 1)
-            if diff_mode == "luminance":
-                diff = ((a - b) * weights).sum(1, keepdim=True).abs()
-            elif diff_mode == "chroma":
-                ca = a - (a * weights).sum(1, keepdim=True)
-                cb = b - (b * weights).sum(1, keepdim=True)
-                diff = (ca - cb).abs().amax(1, keepdim=True)
-            else:
-                diff = (a - b).abs().amax(1, keepdim=True)
-            if s.shape[-1] == 4:
-                alpha_diff = _blur((s[..., 3:] - e[..., 3:]).movedim(-1, 1), pre_blur_px).abs()
-                diff = torch.maximum(diff, alpha_diff)
-            binary = ((diff > threshold) & valid)
-            if limit is not None:
-                binary &= limit > 0
-            mb = binary[0, 0].numpy()
-            if min_region_px > 0:
-                labels, _ = ndimage.label(mb, structure=np.ones((3, 3)))
-                keep = np.bincount(labels.ravel()) >= min_region_px
-                keep[0] = False
-                mb = keep[labels]
-            if fill_holes:
-                mb = ndimage.binary_fill_holes(mb)
-            m = torch.from_numpy(mb.astype(np.float32))[None, None]
+            m, diff = _difference_mask(s, e, valid, threshold, diff_mode, pre_blur_px,
+                                       min_region_px, fill_holes, limit)
             m = _finish_mask(m, grow_px, feather_px, valid, limit)
             composites.append(_composite(s, e, m))
             masks.append(m[:, 0])
@@ -407,7 +423,7 @@ NODE_CLASS_MAPPINGS = {
     "QwenEditDiffMask": QwenEditDiffMask,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "QwenEditMeasureShift": "Qwen Edit Measure Drift",
-    "QwenEditAlignComposite": "Qwen Edit Align Composite",
-    "QwenEditDiffMask": "Qwen Edit Difference Mask + Composite",
+    "QwenEditMeasureShift": "Image Edit Measure Drift",
+    "QwenEditAlignComposite": "Image Edit Align Composite",
+    "QwenEditDiffMask": "Image Edit Difference Mask",
 }

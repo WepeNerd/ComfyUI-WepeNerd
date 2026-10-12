@@ -1,0 +1,33 @@
+{
+  "_readme": "Each preset is a rule (every frame f from min to max where (f - offset) % step == 0) or an explicit \"frames\" list. Refresh the browser after editing; no restart needed. Keys starting with _ are ignored.",
+
+  "LTX-2.x (8n+1, 24 fps)": {
+    "step": 8, "offset": 1, "min": 9, "max": 481,
+    "fps": 24, "default": 121
+  },
+  "LTX-Video 0.9.x (8n+1, 25 fps)": {
+    "step": 8, "offset": 1, "min": 9, "max": 257,
+    "fps": 25, "default": 97
+  },
+  "MiniMax H3 (17n+5, 24 fps)": {
+    "step": 17, "offset": 5, "min": 5, "max": 362,
+    "fps": 24, "default": 192,
+    "_note": "Trained window is roughly 107-362 frames (4-15 s). Shorter counts decode but are out of distribution."
+  },
+  "Wan 2.1 / 2.2 14B (4n+1, 16 fps)": {
+    "step": 4, "offset": 1, "min": 5, "max": 161,
+    "fps": 16, "default": 81
+  },
+  "Wan 2.2 5B (4n+1, 24 fps)": {
+    "step": 4, "offset": 1, "min": 5, "max": 161,
+    "fps": 24, "default": 121
+  },
+  "HunyuanVideo (4n+1, 24 fps)": {
+    "step": 4, "offset": 1, "min": 5, "max": 129,
+    "fps": 24, "default": 129
+  },
+  "Mochi 1 (6n+1, 30 fps)": {
+    "step": 6, "offset": 1, "min": 7, "max": 163,
+    "fps": 30, "default": 163
+  }
+}

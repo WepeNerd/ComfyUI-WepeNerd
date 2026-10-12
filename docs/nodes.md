@@ -1,5 +1,21 @@
 # Node guide
 
+## Zoom Crop
+
+Under **WepeNerd/Image**, connect an IMAGE and set `crop_width` and `crop_height`
+to the **total pixels removed** from each dimension, not the amount per side.
+For example, a 1024×768 image with amounts 200 and 100 becomes 824×668.
+Zero keeps that dimension unchanged; excessive amounts leave at least one pixel.
+
+Click the 5×5 grid to position the retained crop. The middle cell centers it;
+the middle cells on the left, right, top, and bottom keep the corresponding edge.
+Intermediate cells move in quarter increments of the available crop travel.
+Fractional pixel offsets round down. The selected position is saved in workflows
+and is also available as a named `position` choice through the API.
+
+Outputs one IMAGE batch with the same frames, channels, dtype, and device as the
+input. Pixels are copied exactly, with no scaling or interpolation.
+
 ## Load Video (Upload)
 
 Loads MP4, WebM, MKV, MOV, AVI, M4V, or GIF files from ComfyUI's input folder,
@@ -60,6 +76,39 @@ Long or high-resolution batches require RAM for the
 full output (about 24 MiB per 1080p frame); use a cap or smaller dimensions.
 
 ---
+
+## Frame Number Selector
+
+Pick a frame count your video model accepts, under **WepeNerd/Video**. Choose a
+**preset** and the **frames** list shows only that model's legal counts, each with
+its duration at the model's native frame rate. Switching presets keeps the nearest
+legal count, so 121 frames on LTX becomes 124 on MiniMax H3.
+
+| Preset | Rule | Range | fps |
+|---|---|---|---|
+| LTX-2.x | 8n+1 | 9–481 | 24 |
+| LTX-Video 0.9.x | 8n+1 | 9–257 | 25 |
+| MiniMax H3 | 17n+5 | 5–362 | 24 |
+| Wan 2.1 / 2.2 14B | 4n+1 | 5–161 | 16 |
+| Wan 2.2 5B | 4n+1 | 5–161 | 24 |
+| HunyuanVideo | 4n+1 | 5–129 | 24 |
+| Mochi 1 | 6n+1 | 7–163 | 30 |
+
+MiniMax H3's trained window is roughly 107–362 frames (4–15 s); shorter counts on
+the grid decode but are out of distribution. The LTX-2 and Wan upper limits are
+practical caps, not model maximums.
+
+| Output | Description |
+|---|---|
+| `frames` | INT. Connect to `length`, `num_frames`, `frame_count` or `batch_size` inputs |
+| `fps` | FLOAT. The preset's native frame rate, for `frame_rate`/`fps` inputs |
+| `seconds` | FLOAT. Duration at that frame rate |
+
+Presets live in `frame_number_presets.json`. Each is a rule (`step`, `offset`, `min`,
+`max`, `fps`, `default`) or an explicit `frames` list. Refresh the browser after
+editing; no restart is needed. A count that isn't legal for the preset (an old
+workflow or an API call) is snapped to the nearest legal one, ties going up, with a
+warning in the console.
 
 ## Drag Resolution
 
@@ -133,13 +182,9 @@ cropping. Supports upscaling and downscaling with ComfyUI's **lanczos** (default
 **bicubic**, **bilinear**, **nearest-exact**, and **area** interpolation.
 
 
-## Qwen Edit Align
+## Qwen Edit Mask
 
-**Category:** `WepeNerd/Qwen Edit Align`. These operate on decoded images and
-work with other image editors too. No model patch or RoPE correction is included.
-
-### Qwen Edit Mask
-
+**Category:** `WepeNerd/Qwen Edit Align`.
 **Outputs:** `image`, `source`, `mask`, `mask_image`, `prompt`.
 
 Marks the region a Qwen-Image 2.1 edit should change, using the model's
@@ -174,8 +219,8 @@ and asks the model to remove the marks and leave the rest alone. For example:
 glass vase. Remove the red outline. Keep everything outside that area
 unchanged.* You can also ignore `prompt` and write your own.
 
-To guarantee that nothing outside the region changes, connect `source` and the
-decoded result to **Qwen Edit Align Composite**, with `mask` as `edit_mask`.
+To restore source pixels outside the final mask, connect `source` and the
+decoded result to **Image Edit Align Composite**, with `mask` as `edit_mask`.
 The outline sits just outside `mask`, so the composite also restores those
 pixels from the clean `source`. Keep `grow_px` and `feather_px` there at or
 below `line_px` so leftover outline colour is not pasted back.
@@ -184,10 +229,27 @@ Painting is saved with the workflow in the same way as Paint Mask. A connected
 IMAGE batch is processed as a batch, with the same mask on every image. Qwen
 reads only the first reference image in each slot.
 
-### Qwen Edit Measure Drift
+## Image Edit Alignment
 
-Connect one `source` and one `edited` image. `translation` estimates horizontal
-and vertical drift; `affine` also fits scale, rotation and shear. Positive
+**Category:** `WepeNerd/Image Edit`. These operate on decoded images from Qwen,
+Krea2 or other image editors. No model patch or RoPE correction is involved.
+
+Start with **Image Edit Align Composite**: connect `source` and `edited`, and use
+`composite`. It estimates an affine fit automatically, correcting shift, scale,
+rotation and shear, then keeps the selected edits. No measurement node is needed.
+Use **Image Edit Difference Mask** when you want a preview or detailed cleanup.
+Both use the same automatic mask defaults: threshold 0.08, comparison blur 2 px,
+minimum region 64 pixels, hole filling, and 2 px growth/feathering.
+
+Specialist settings are under **Advanced**. Existing workflows retain their node
+IDs, connections and saved settings; older Measure/Align nodes saved with
+`translation` keep it. Set their Advanced `mode` to `affine` to use the new default.
+
+### Image Edit Measure Drift
+
+Optional: connect one `source` and one `edited` image to inspect or reuse a fit.
+The default `affine` fits shift, scale, rotation and shear; Advanced `translation`
+fits horizontal and vertical drift only. Positive
 `drift_x_px` means the edited content moved right, positive `drift_y_px` means
 down. Values are in source-image pixels; for affine fits they describe movement
 at the image centre. Connect `warp_params` to Align Composite to reuse the fit.
@@ -195,27 +257,32 @@ Optional `edit_mask` excludes intended changes from registration; white is exclu
 `ignore_border_px` excludes border artifacts and is reduced for very small images.
 This node reports a single pair; select individual images before measuring a batch.
 
-### Qwen Edit Align Composite
+### Image Edit Align Composite
 
 Aligns `edited` to `source`, then composites with `edit_mask` (white selects the
-edit), or a simple threshold mask when no mask is connected. `grow_px` expands
+edit), or a cleaned difference mask when no mask is connected. `grow_px` expands
 the mask and `feather_px` softens its boundary. Outputs `composite`, `aligned_edit`,
 `mask`, and reusable `warp_params`. The supplied mask is in source coordinates
 and is also excluded from the alignment fit. Parameters measured at a different
 resolution scale with each axis; use them only for the same image geometry.
+Connected `warp_params` supplies the complete transform and overrides `mode`;
+the two nodes do not need matching mode selections. With no connection the fit
+is measured here. `auto_mask_threshold` applies only without `edit_mask`.
+For edits smaller than 64 pixels or custom cleanup, use Difference Mask's
+Advanced controls, or supply an `edit_mask` to bypass automatic detection.
 
-### Qwen Edit Difference Mask + Composite
+### Image Edit Difference Mask
 
 This is the dedicated auto-masker for additions, removals and replacements.
 Connect the original image to `source` and the edited result to `edited`.
-It optionally corrects translation drift, compares the images, cleans up the mask,
+It corrects affine drift by default, compares the images, cleans up the mask,
 and pastes the selected edited pixels onto the original. Removed objects are
 replaced by the background from the edited image.
 
 | Control | Effect |
 |---|---|
 | `threshold` | Lower detects smaller differences; higher preserves more source pixels. Start at 0.08. |
-| `align_first` | Correct translation before comparison. Enable for shifted edits; disable for already aligned images. |
+| `align_first` | Advanced. Correct affine drift before comparison; disable for already aligned images. |
 | `diff_mode` | Max RGB detects any colour-channel change; luminance compares brightness; chroma compares colour relative to brightness. |
 | `pre_blur_px` | Blur only the comparison images to suppress fine noise; compositing still uses the unblurred edit. |
 | `min_region_px` | Remove connected regions below this area. Set 0 to retain tiny edits. |
@@ -226,8 +293,8 @@ replaced by the background from the edited image.
 
 Outputs: `composite`, `mask`, `preview` (red mask overlay on the source), and
 `difference` (grayscale visual difference scaled around the threshold).
-For affine drift, run Align Composite in `affine` mode first, then compare its
-`aligned_edit` with the original using `align_first=false`.
+No upstream alignment node is needed. If using an already aligned image, turn
+Advanced `align_first` off to avoid measuring it again.
 
 Both compositors handle matching batches and broadcast a single source, edit or
 mask over a batch. Each pair is aligned separately. Other batch-size mismatches
@@ -253,7 +320,7 @@ of an object can be missed. Inspect the mask and use `limit_mask` or Paint Mask
 when you need a precise allowed edit region. No model download is required.
 
 Validated with synthetic translations, affine transforms, additions/removals,
-batches, mask limits and exact preservation checks. Real Qwen output quality
+batches, mask limits and exact preservation checks. Real Qwen/Krea2 output quality
 still depends on the source/edit pair and the chosen threshold.
 
 ## Slider

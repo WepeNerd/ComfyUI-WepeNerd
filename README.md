@@ -7,14 +7,16 @@ Resolution tools, painting and image warping, and spatial LoRA masks for ComfyUI
 | **Drag Resolution** | Set dimensions visually with aspect-ratio and divisor controls |
 | **Resolution Suggest** | Calculate dimensions from a target size or scale factor |
 | **Resize Image Megapixels** | Resize an image batch to a target area without cropping |
+| **Zoom Crop** | Remove width/height pixels and position the retained crop on a 5×5 grid |
 | **Load Video (Upload)** | Sample video into an IMAGE batch with frame controls, optional audio, VHS presets, and an autoplaying preview |
+| **Frame Number Selector** | Pick a frame count that is legal for LTX, MiniMax H3, Wan, Hunyuan or Mochi from a preset-filtered list |
 | **Speedpaint** | Sketch from a blank canvas or imported image and output an IMAGE |
 | **Paint Mask** | Paint a MASK over an uploaded or connected image and pass the IMAGE downstream |
 | **Liquify Image** | Push-warp files or connected IMAGE batches with editable strokes and full-resolution output |
 | **Qwen Edit Mask** | Paint where a Qwen-Image 2.1 edit should happen and get a guided reference image, mask and prompt |
-| **Qwen Edit Measure Drift** | Measure translation or affine drift between a source and an edit |
-| **Qwen Edit Align Composite** | Align an edited image and composite through a supplied or automatic mask |
-| **Qwen Edit Difference Mask + Composite** | Detect visual edits, clean up the difference mask, and preserve source pixels outside it |
+| **Image Edit Align Composite** | Automatically align Qwen, Krea2 or other image edits and composite through a supplied or automatic mask |
+| **Image Edit Difference Mask** | Align and isolate visual edits, with mask preview and cleanup controls |
+| **Image Edit Measure Drift** | Optional measurement for inspecting or reusing an alignment fit |
 | **Sigma Curve** | Draw a SIGMAS schedule by dragging points on a graph, with presets and exact numeric entry |
 | **Slider** | Map a compact FLOAT control to your preferred strength range |
 | **Load LoRA Masked · Beta** | Apply spatial LoRA/LoKr regions to native Krea2 models |
@@ -67,11 +69,12 @@ workflow.
   paint the area to change, and type the edit in `instruction`. Connect `image` to
   `image_1` and `prompt` to `prompt` on **Text Encode Qwen Image 2.1**, and set the
   encoder's `resolution` to 0. See the [guide options](docs/nodes.md#qwen-edit-mask).
-- **Qwen Edit Align:** find the three nodes under **WepeNerd/Qwen Edit Align**.
-  Connect the original to `source` and the generated edit to `edited` on
-  **Qwen Edit Difference Mask + Composite**. Preview `mask` or `preview`, tune
-  `threshold`, and save `composite`. Pixels where the final mask is zero are
-  copied exactly from the source. See the [controls and limits](docs/nodes.md#qwen-edit-align).
+- **Image Edit alignment:** under **WepeNerd/Image Edit**, add **Image Edit Align
+  Composite**, connect the original to `source` and the generated edit to `edited`,
+  then save `composite`. Affine alignment and a cleaned automatic mask are enabled
+  by default; Measure Drift is optional. Use **Image Edit Difference Mask** for a
+  mask preview and finer cleanup controls. Pixels where the final mask is zero
+  are copied exactly from the source. See the [controls and limits](docs/nodes.md#image-edit-alignment).
 
 See the [node guide](docs/nodes.md) for controls, inputs, outputs, and limitations.
 

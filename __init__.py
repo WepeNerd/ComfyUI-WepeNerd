@@ -4,6 +4,7 @@ from .resolution_suggest import WN_ResolutionSuggest
 from .drag_resolution import WN_DragResolution
 from .slider_node import WN_Slider
 from .resize_megapixels_node import WN_ResizeMegapixels
+from .zoom_crop_node import WN_ZoomCrop
 from .load_video_node import WN_LoadVideo
 from .speedpaint_node import WN_Speedpaint
 from .liquify_node import WN_LiquifyImage
@@ -17,6 +18,9 @@ from .qwen_edit_align import NODE_CLASS_MAPPINGS as QWEN_ALIGN_NODES
 from .qwen_edit_align import NODE_DISPLAY_NAME_MAPPINGS as QWEN_ALIGN_NAMES
 from .qwen_edit_mask_node import NODE_CLASS_MAPPINGS as QWEN_MASK_NODES
 from .qwen_edit_mask_node import NODE_DISPLAY_NAME_MAPPINGS as QWEN_MASK_NAMES
+from .frame_number_node import NODE_CLASS_MAPPINGS as FRAME_NUMBER_NODES
+from .frame_number_node import NODE_DISPLAY_NAME_MAPPINGS as FRAME_NUMBER_NAMES
+from .frame_number_node import register_frame_number_routes
 
 WEB_DIRECTORY = "./js"
 NODE_CLASS_MAPPINGS = {
@@ -24,6 +28,7 @@ NODE_CLASS_MAPPINGS = {
     'WN_DragResolution': WN_DragResolution,
     'WN_Slider': WN_Slider,
     'WN_ResizeMegapixels': WN_ResizeMegapixels,
+    'WN_ZoomCrop': WN_ZoomCrop,
     'WN_LoadVideo': WN_LoadVideo,
     'WN_Speedpaint': WN_Speedpaint,
     'WN_LiquifyImage': WN_LiquifyImage,
@@ -37,6 +42,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "WN_DragResolution": "Drag Resolution (WepeNerd)",
     "WN_Slider": "Slider",
     "WN_ResizeMegapixels": "Resize Image Megapixels (WepeNerd)",
+    "WN_ZoomCrop": "Zoom Crop (WepeNerd)",
     "WN_LoadVideo": "Load Video (Upload) (WepeNerd)",
     "WN_Speedpaint": "Speedpaint",
     "WN_LiquifyImage": "Liquify Image (WepeNerd)",
@@ -50,8 +56,11 @@ NODE_CLASS_MAPPINGS.update(QWEN_ALIGN_NODES)
 NODE_DISPLAY_NAME_MAPPINGS.update(QWEN_ALIGN_NAMES)
 NODE_CLASS_MAPPINGS.update(QWEN_MASK_NODES)
 NODE_DISPLAY_NAME_MAPPINGS.update(QWEN_MASK_NAMES)
+NODE_CLASS_MAPPINGS.update(FRAME_NUMBER_NODES)
+NODE_DISPLAY_NAME_MAPPINGS.update(FRAME_NUMBER_NAMES)
 
 register_speedpaint_routes()
+register_frame_number_routes()
 register_module_cache_headers()
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
