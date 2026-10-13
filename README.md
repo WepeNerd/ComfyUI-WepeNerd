@@ -7,7 +7,7 @@ Resolution tools, painting and image warping, and spatial LoRA masks for ComfyUI
 | **Drag Resolution** | Set dimensions visually with aspect-ratio and divisor controls |
 | **Resolution Suggest** | Calculate dimensions from a target size or scale factor |
 | **Resize Image Megapixels** | Resize an image batch to a target area without cropping |
-| **Zoom Crop** | Remove width/height pixels and position the retained crop on a 5×5 grid |
+| **Zoom Crop** | Remove width/height pixels and pick the kept area with a one-click 5×5 picker |
 | **Load Video (Upload)** | Sample video into an IMAGE batch with frame controls, optional audio, VHS presets, and an autoplaying preview |
 | **Frame Number Selector** | Pick a frame count that is legal for LTX, MiniMax H3, Wan, Hunyuan or Mochi from a preset-filtered list |
 | **Speedpaint** | Sketch from a blank canvas or imported image and output an IMAGE |

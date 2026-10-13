@@ -7,8 +7,11 @@ to the **total pixels removed** from each dimension, not the amount per side.
 For example, a 1024×768 image with amounts 200 and 100 becomes 824×668.
 Zero keeps that dimension unchanged; excessive amounts leave at least one pixel.
 
-Click the 5×5 grid to position the retained crop. The middle cell centers it;
-the middle cells on the left, right, top, and bottom keep the corresponding edge.
+Click (or drag across) the 5×5 picker to choose which part of the image to keep;
+the blue box previews the retained area and hovering shows a dashed preview first.
+Arrow keys nudge the selection when the picker is focused and C recenters it.
+The middle cell centers the crop; the middle cells on the left, right, top, and
+bottom keep the corresponding edge.
 Intermediate cells move in quarter increments of the available crop travel.
 Fractional pixel offsets round down. The selected position is saved in workflows
 and is also available as a named `position` choice through the API.

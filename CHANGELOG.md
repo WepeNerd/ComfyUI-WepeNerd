@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Zoom Crop: replace the position dropdown with a one-click 5×5 picker that previews
+  the kept area, supports click-and-drag, hover preview and arrow keys, and never
+  opens the 25-item list. Saved workflows keep their position.
 - Add Frame Number Selector: a preset-filtered dropdown of legal frame counts for LTX
   (8n+1), MiniMax H3 (17n+5), Wan and Hunyuan (4n+1) and Mochi (6n+1), outputting
   `frames`, `fps` and `seconds`. Presets are editable in `frame_number_presets.json`.
