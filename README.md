@@ -9,7 +9,7 @@ Resolution tools, painting and image warping, and spatial LoRA masks for ComfyUI
 | **Resize Image Megapixels** | Resize an image batch to a target area without cropping |
 | **Zoom Crop** | Remove width/height pixels and pick the kept area with a one-click 5×5 picker |
 | **Load Video (Upload)** | Load a clip by start time, duration and frame cap into an IMAGE batch, with audio, transparency mask, model frame presets, a readout of what will load, and a preview that loops the clip |
-| **Frame Number Selector** | Pick a frame count that is legal for LTX, MiniMax H3, Wan, Hunyuan, Cosmos or Mochi from a preset-filtered list |
+| **Duration Selector** | Pick a clip length that is legal for LTX, MiniMax H3, Wan, Hunyuan, Cosmos or Mochi, as frames or seconds kept in sync |
 | **Speedpaint** | Sketch from a blank canvas or imported image and output an IMAGE |
 | **Paint Mask** | Paint a MASK over an uploaded or connected image and pass the IMAGE downstream |
 | **Liquify Image** | Push-warp files or connected IMAGE batches with editable strokes and full-resolution output |

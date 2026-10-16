@@ -7,7 +7,7 @@ export const VALUES_MARKER = "wn_load_video_v2";
 export const WATCHED = ["video", "start_time", "duration", "frame_load_cap", "frame_rate",
     "skip_first_frames", "select_every_nth", "format"];
 
-// Format names from before the presets were shared with Frame Number Selector.
+// Format names from before the presets were shared with Duration Selector.
 export const LEGACY_FORMATS = {
     AnimateDiff: "None",
     Mochi: "Mochi 1 (6n+1, 30 fps)",

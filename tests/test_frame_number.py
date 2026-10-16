@@ -74,6 +74,10 @@ class FrameNumberPresetTest(unittest.TestCase):
         self.assertEqual(fn.select_frames(self.presets, LTX2, "121")[2], round(121 / 24, 4))
         self.assertEqual(fn.select_frames(self.presets, "Wan 2.1 / 2.2 14B (4n+1, 16 fps)", "81")[2], 5.0625)
 
+    def test_shown_as_duration_selector_under_its_original_id(self):
+        self.assertEqual(fn.NODE_DISPLAY_NAME_MAPPINGS, {"WN_FrameNumberSelector": "Duration Selector (WepeNerd)"})
+        self.assertEqual(list(fn.WN_FrameNumberSelector.INPUT_TYPES()["required"]), ["preset", "frames"])
+
     def test_older_labels_with_seconds_still_parse(self):
         self.assertEqual(fn.parse_frames("362  (15.08s)"), 362)
 

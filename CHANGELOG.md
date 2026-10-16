@@ -14,16 +14,19 @@
   RAM) on the node before running, with a note when nothing would load or a preset's
   range is exceeded.
 - Load Video: format presets now come from `frame_number_presets.json`, shared with
-  Frame Number Selector; picking one sets the model's frame rate. Old format names in
+  Duration Selector; picking one sets the model's frame rate. Old format names in
   saved workflows map to the matching preset. Adds a Cosmos 1.0 preset to both nodes.
 - Load Video: add `mask` (transparency, for WebM/MOV/GIF with alpha), `width`, `height`
   and `source_fps` outputs after the existing ones.
 - Load Video: remove `custom_width` and `custom_height`; resize with a separate node.
   Presets no longer change the image size. Saved workflows keep their other settings.
 - Load Video: list input videos faster (no per-file stat on Windows, brief cache).
-- Add Frame Number Selector: a preset-filtered dropdown of legal frame counts for LTX
-  (8n+1), MiniMax H3 (17n+5), Wan and Hunyuan (4n+1) and Mochi (6n+1), outputting
-  `frames`, `fps` and `seconds`. Presets are editable in `frame_number_presets.json`.
+- Add Duration Selector (first released as Frame Number Selector): a preset-filtered
+  dropdown of legal frame counts for LTX (8n+1), MiniMax H3 (17n+5), Wan and Hunyuan
+  (4n+1) and Mochi (6n+1), outputting `frames`, `fps` and `seconds`. A seconds field
+  stays in sync with frames: typing seconds picks the nearest legal count, and its
+  arrows step one count at a time. Switching presets keeps about the same length.
+  Presets are editable in `frame_number_presets.json`.
 - Mask editor: add **Fill enclosed areas**, which fills the inside of closed painted
   outlines at the current Opacity (Paint Mask, Qwen Edit Mask, Load LoRA Masked).
 - Add Qwen Edit Mask: paint the region a Qwen-Image 2.1 edit should change and get the

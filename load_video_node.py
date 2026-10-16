@@ -23,7 +23,7 @@ except ImportError:  # Loaded as a standalone module, as the tests do.
 
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".mkv", ".mov", ".avi", ".m4v", ".gif"}
 DEFAULT_FRAME_CAP = 121
-# Format names used before the presets were shared with Frame Number Selector, mapped to the
+# Format names used before the presets were shared with Duration Selector, mapped to the
 # shared preset they became and the frame rule (step, offset) to fall back on if it is missing.
 LEGACY_FORMATS = {
     "AnimateDiff": ("None", None),
@@ -383,7 +383,7 @@ class WN_LoadVideo:
     )
     DESCRIPTION = (
         "Load a video as RGB images. Order: start time, duration, frame rate, skip, every nth, cap, "
-        "format trimming. Format presets (shared with Frame Number Selector) trim the frame count "
+        "format trimming. Format presets (shared with Duration Selector) trim the frame count "
         "to a model's rule. The node shows what will load before you run it."
     )
 
@@ -420,7 +420,7 @@ class WN_LoadVideo:
             }),
             "format": (format_names(), {
                 "default": "None",
-                "tooltip": "Trim the frame count to a video model's rule (the Frame Number Selector presets). "
+                "tooltip": "Trim the frame count to a video model's rule (the Duration Selector presets). "
                            "Picking one also sets frame_rate to the model's FPS. None keeps the selected count.",
             }),
             "load_audio": ("BOOLEAN", {"default": True,

@@ -1,4 +1,6 @@
-"""Frame Number Selector: pick a model-legal frame count from a preset-filtered list.
+"""Duration Selector: pick a model-legal clip length, as frames or seconds.
+
+The node id stays WN_FrameNumberSelector (its first name) so saved workflows keep loading.
 
 The ``frames`` dropdown lists plain frame numbers. It is declared with every
 preset's numbers combined, so ComfyUI's validation always accepts the value;
@@ -61,7 +63,7 @@ def load_presets(path=PRESETS_PATH):
         try:
             fps, frames = expand_preset(cfg)
         except (KeyError, TypeError, ValueError) as error:
-            log.warning("[WepeNerd] Frame Number Selector: skipping preset %r (%s).", name, error)
+            log.warning("[WepeNerd] Duration Selector: skipping preset %r (%s).", name, error)
             continue
         if not frames:
             continue
@@ -92,7 +94,7 @@ def select_frames(presets, preset, frames):
     count = parse_frames(frames)
     if count not in entry["frames"]:
         snapped = nearest(entry["frames"], count)
-        log.warning("[WepeNerd] Frame Number Selector: %d frames isn't valid for %s; using %d.",
+        log.warning("[WepeNerd] Duration Selector: %d frames isn't valid for %s; using %d.",
                     count, preset, snapped)
         count = snapped
     return count, entry["fps"], round(count / entry["fps"], 4)
@@ -111,9 +113,10 @@ class WN_FrameNumberSelector:
         "Clip duration in seconds: frames / fps.",
     )
     DESCRIPTION = (
-        "Pick a frame count that is legal for a video model. The preset filters the list "
-        "to that model's grid (8n+1 for LTX, 17n+5 for MiniMax H3, 4n+1 for Wan and "
-        "Hunyuan, 6n+1 for Mochi). Edit frame_number_presets.json to add presets."
+        "Pick a clip length that is legal for a video model, as frames or seconds. The preset "
+        "filters the list to that model's grid (8n+1 for LTX, 17n+5 for MiniMax H3, 4n+1 for Wan "
+        "and Hunyuan, 6n+1 for Mochi). Editing seconds picks the nearest legal frame count. "
+        "Edit frame_number_presets.json to add presets."
     )
 
     @classmethod
@@ -129,7 +132,7 @@ class WN_FrameNumberSelector:
                 "frames": (union_labels(presets), {
                     "default": presets[names[0]]["default"],
                     "tooltip": "Valid frame counts for the selected preset. "
-                               "Changing preset keeps the nearest valid count.",
+                               "Changing preset keeps about the same length in seconds.",
                 }),
             }
         }
@@ -164,4 +167,4 @@ def register_frame_number_routes():
 
 
 NODE_CLASS_MAPPINGS = {"WN_FrameNumberSelector": WN_FrameNumberSelector}
-NODE_DISPLAY_NAME_MAPPINGS = {"WN_FrameNumberSelector": "Frame Number Selector (WepeNerd)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"WN_FrameNumberSelector": "Duration Selector (WepeNerd)"}

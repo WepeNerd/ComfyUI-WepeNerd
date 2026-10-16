@@ -36,7 +36,7 @@ batch with a separate node.
 | `frame_rate` | 0 keeps source frames. A positive FPS samples the video timeline, dropping or repeating frames without interpolation. |
 | `skip_first_frames` | Frames skipped after `start_time` and rate conversion. |
 | `select_every_nth` | Keep every nth frame after skipping; 1 keeps all. |
-| `format` | A video model's frame-count rule, from the Frame Number Selector presets; default `None`. Picking a preset also sets `frame_rate` to the model's FPS (you can change it afterwards). |
+| `format` | A video model's frame-count rule, from the Duration Selector presets; default `None`. Picking a preset also sets `frame_rate` to the model's FPS (you can change it afterwards). |
 | `load_audio` | Enabled by default. Decode the selected clip's audio; disable for image-only workflows. |
 
 Below the settings, the node shows what will load before you run it: the source
@@ -60,7 +60,7 @@ and `duration` keep the source frames nearest to times inside the window. Positi
 rates use FFmpeg's standard FPS filter with nearest timestamp rounding, on a grid that
 starts at `start_time`; source-frame choices can differ from VHS's OpenCV loader.
 
-Format presets come from `frame_number_presets.json`, shared with Frame Number
+Format presets come from `frame_number_presets.json`, shared with Duration
 Selector, so a preset you add there appears in both nodes. Load Video trims to the
 preset's rule (or its explicit list) without the list's upper limit: the largest
 valid count that doesn't exceed the cap. Too few frames, a cap below the preset's
@@ -149,12 +149,23 @@ full output (about 24 MiB per 1080p frame); use a cap or smaller dimensions.
 
 ---
 
-## Frame Number Selector
+## Duration Selector
 
-Pick a frame count your video model accepts, under **WepeNerd/Video**. Choose a
-**preset** and the **frames** list shows only that model's valid frame counts.
-Switching presets keeps the nearest valid count, so 121 frames on LTX becomes 124 on
-MiniMax H3.
+Pick a clip length your video model accepts, as frames or seconds, under
+**WepeNerd/Video**. (This node was called Frame Number Selector; saved workflows load
+unchanged.) Choose a **preset** and the **frames** list shows only that model's valid
+frame counts.
+
+**seconds** shows the selected count's length (frames ÷ fps, to two decimals) and stays
+in sync both ways. Picking a frame count updates seconds. Typing seconds picks the
+nearest legal frame count (ties go up), and seconds then shows that count's exact
+length: 5 s at MiniMax H3's 24 fps becomes 124 frames, 5.17 s. The arrows (or a drag)
+step to the next or previous legal count, so they never get stuck between counts.
+Seconds is worked out from frames, so it isn't saved or sent with the prompt; the
+frames value is what the node uses.
+
+Switching presets keeps about the same length, so 121 frames (5.04 s) on LTX-2 becomes
+81 frames (5.06 s) on Wan 2.1 14B at 16 fps. Loading a workflow keeps its stored count.
 
 | Preset | Rule | Range | fps |
 |---|---|---|---|
