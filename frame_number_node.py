@@ -1,8 +1,8 @@
 """Frame Number Selector: pick a model-legal frame count from a preset-filtered list.
 
-The ``frames`` dropdown is declared with every preset's labels combined, so
-ComfyUI's validation always accepts the value; js/wn_frame_number.js narrows the
-visible list to the selected preset. A value that isn't legal for the chosen
+The ``frames`` dropdown lists plain frame numbers. It is declared with every
+preset's numbers combined, so ComfyUI's validation always accepts the value;
+js/wn_frame_number.js narrows the visible list to the selected preset. A value that isn't legal for the chosen
 preset (old workflow, API call, extension not loaded) is snapped to the nearest
 legal count, ties going up.
 """
@@ -17,9 +17,9 @@ _LEADING_INT = re.compile(r"^\s*(\d+)")
 log = logging.getLogger("WepeNerd")
 
 
-def make_label(frames, fps):
-    """Dropdown label; JS and Python both read the frame count from the leading integer."""
-    return f"{frames}  ({frames / fps:.2f}s)"
+def make_label(frames):
+    """Dropdown entry: just the frame number. Seconds come out of the `seconds` output."""
+    return str(int(frames))
 
 
 def parse_frames(value):
@@ -69,8 +69,8 @@ def load_presets(path=PRESETS_PATH):
         presets[name] = {
             "fps": fps,
             "frames": frames,
-            "labels": [make_label(f, fps) for f in frames],
-            "default": make_label(default, fps),
+            "labels": [make_label(f) for f in frames],
+            "default": make_label(default),
         }
     if not presets:
         raise ValueError(f"No usable presets in {path}.")
@@ -78,11 +78,9 @@ def load_presets(path=PRESETS_PATH):
 
 
 def union_labels(presets):
-    counts = {}
-    for preset in presets.values():
-        for frames, label in zip(preset["frames"], preset["labels"]):
-            counts.setdefault(label, frames)
-    return sorted(counts, key=lambda label: (counts[label], label))
+    """Every preset's frame numbers, each listed once, in ascending order."""
+    frames = sorted({f for preset in presets.values() for f in preset["frames"]})
+    return [make_label(f) for f in frames]
 
 
 def select_frames(presets, preset, frames):
@@ -108,7 +106,7 @@ class WN_FrameNumberSelector:
     OUTPUT_TOOLTIPS = (
         "Frame count. Connect to length, num_frames, frame_count or batch_size inputs.",
         "The preset's native frame rate.",
-        "Clip duration in seconds at that frame rate.",
+        "Clip duration in seconds: frames / fps.",
     )
     DESCRIPTION = (
         "Pick a frame count that is legal for a video model. The preset filters the list "
@@ -128,8 +126,8 @@ class WN_FrameNumberSelector:
                 }),
                 "frames": (union_labels(presets), {
                     "default": presets[names[0]]["default"],
-                    "tooltip": "Legal frame counts for the preset, with the duration at its native fps. "
-                               "Changing preset keeps the nearest legal count.",
+                    "tooltip": "Valid frame counts for the selected preset. "
+                               "Changing preset keeps the nearest valid count.",
                 }),
             }
         }

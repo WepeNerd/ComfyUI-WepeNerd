@@ -83,9 +83,9 @@ full output (about 24 MiB per 1080p frame); use a cap or smaller dimensions.
 ## Frame Number Selector
 
 Pick a frame count your video model accepts, under **WepeNerd/Video**. Choose a
-**preset** and the **frames** list shows only that model's legal counts, each with
-its duration at the model's native frame rate. Switching presets keeps the nearest
-legal count, so 121 frames on LTX becomes 124 on MiniMax H3.
+**preset** and the **frames** list shows only that model's valid frame counts.
+Switching presets keeps the nearest valid count, so 121 frames on LTX becomes 124 on
+MiniMax H3.
 
 | Preset | Rule | Range | fps |
 |---|---|---|---|
@@ -105,7 +105,7 @@ practical caps, not model maximums.
 |---|---|
 | `frames` | INT. Connect to `length`, `num_frames`, `frame_count` or `batch_size` inputs |
 | `fps` | FLOAT. The preset's native frame rate, for `frame_rate`/`fps` inputs |
-| `seconds` | FLOAT. Duration at that frame rate |
+| `seconds` | FLOAT. `frames / fps`, e.g. 192 frames at 24 fps = 8.0 |
 
 Presets live in `frame_number_presets.json`. Each is a rule (`step`, `offset`, `min`,
 `max`, `fps`, `default`) or an explicit `frames` list. Refresh the browser after

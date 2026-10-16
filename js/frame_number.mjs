@@ -1,5 +1,6 @@
 // Pure helpers for the Frame Number Selector. Labels come from frame_number_node.py
-// and start with the frame count, e.g. "121  (5.04s)".
+// and are plain frame numbers such as "121". framesOf also reads the leading number
+// of older labels like "121  (5.04s)" so saved workflows map onto the new list.
 
 export function framesOf(label) {
     return Number.parseInt(String(label), 10);

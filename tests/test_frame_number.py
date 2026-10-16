@@ -35,13 +35,13 @@ class FrameNumberPresetTest(unittest.TestCase):
             self.assertTrue(set(preset["labels"]) <= set(allowed), name)
 
     def test_outputs_int_frames_fps_and_seconds(self):
-        frames, fps, seconds = fn.WN_FrameNumberSelector().select(H3, "192  (8.00s)")
+        frames, fps, seconds = fn.WN_FrameNumberSelector().select(H3, "192")
         self.assertIsInstance(frames, int)
         self.assertEqual((frames, fps, seconds), (192, 24.0, 8.0))
 
     def test_illegal_counts_snap_to_nearest_with_ties_going_up(self):
         with self.assertLogs("WepeNerd", level="WARNING"):
-            self.assertEqual(fn.select_frames(self.presets, H3, "121  (5.04s)")[0], 124)
+            self.assertEqual(fn.select_frames(self.presets, H3, "121")[0], 124)
         with self.assertLogs("WepeNerd", level="WARNING"):
             self.assertEqual(fn.select_frames(self.presets, LTX2, 13)[0], 17)
 
@@ -61,11 +61,20 @@ class FrameNumberPresetTest(unittest.TestCase):
                 presets = fn.load_presets(path)
         self.assertEqual(list(presets), ["List"])
         self.assertEqual(presets["List"]["frames"], [9, 49])
-        self.assertEqual(presets["List"]["default"], "49  (6.12s)")
+        self.assertEqual(presets["List"]["default"], "49")
 
-    def test_label_parity_with_frontend(self):
-        # tests/frame_number.test.mjs reads frame counts from these same labels.
-        self.assertEqual(fn.make_label(121, 24), "121  (5.04s)")
+    def test_lists_are_plain_unique_frame_numbers(self):
+        allowed = fn.WN_FrameNumberSelector.INPUT_TYPES()["required"]["frames"][0]
+        self.assertEqual(len(allowed), len(set(allowed)))
+        self.assertEqual([int(v) for v in allowed], sorted(int(v) for v in allowed))
+        self.assertEqual(self.presets[H3]["labels"][:3], ["5", "22", "39"])
+        self.assertEqual(self.presets[H3]["default"], "192")
+
+    def test_seconds_is_frames_divided_by_fps(self):
+        self.assertEqual(fn.select_frames(self.presets, LTX2, "121")[2], round(121 / 24, 4))
+        self.assertEqual(fn.select_frames(self.presets, "Wan 2.1 / 2.2 14B (4n+1, 16 fps)", "81")[2], 5.0625)
+
+    def test_older_labels_with_seconds_still_parse(self):
         self.assertEqual(fn.parse_frames("362  (15.08s)"), 362)
 
 
