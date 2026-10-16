@@ -1,0 +1,1123 @@
+{
+ "presets": {
+  "ltx": {
+   "rule": [
+    8,
+    1
+   ],
+   "min": 9,
+   "max": 481
+  },
+  "h3": {
+   "rule": [
+    17,
+    5
+   ],
+   "min": 5,
+   "max": 362
+  },
+  "list": {
+   "rule": null,
+   "frames": [
+    25,
+    49,
+    97
+   ],
+   "min": 25,
+   "max": 97
+  }
+ },
+ "infos": {
+  "cfr30": {
+   "fps": 30,
+   "duration": 10,
+   "frames": 300,
+   "frames_exact": true,
+   "variable": false
+  },
+  "ntsc": {
+   "fps": 29.97002997002997,
+   "duration": 12.4124,
+   "frames": 372,
+   "frames_exact": true,
+   "variable": false
+  },
+  "webm": {
+   "fps": 24,
+   "duration": 3.5,
+   "frames": 84,
+   "frames_exact": false,
+   "variable": false
+  },
+  "phone": {
+   "fps": 29.87,
+   "duration": 7.0,
+   "frames": 209,
+   "frames_exact": true,
+   "variable": true
+  }
+ },
+ "cases": [
+  {
+   "info": "cfr30",
+   "settings": {},
+   "preset": null,
+   "expected": {
+    "count": 300,
+    "frame_rate": 30.0,
+    "seconds": 10.0,
+    "clip_start": 0.0,
+    "clip_end": 10.0,
+    "estimate": true
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "frame_load_cap": 121
+   },
+   "preset": null,
+   "expected": {
+    "count": 121,
+    "frame_rate": 30.0,
+    "seconds": 4.033333333,
+    "clip_start": 0.0,
+    "clip_end": 4.033333333,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "frame_load_cap": 121
+   },
+   "preset": "h3",
+   "expected": {
+    "count": 107,
+    "frame_rate": 30.0,
+    "seconds": 3.566666667,
+    "clip_start": 0.0,
+    "clip_end": 3.566666667,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 2,
+    "duration": 1
+   },
+   "preset": null,
+   "expected": {
+    "count": 30,
+    "frame_rate": 30.0,
+    "seconds": 1.0,
+    "clip_start": 2.0,
+    "clip_end": 3.0,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 5.01,
+    "duration": 0.25
+   },
+   "preset": null,
+   "expected": {
+    "count": 8,
+    "frame_rate": 30.0,
+    "seconds": 0.266666667,
+    "clip_start": 5.0,
+    "clip_end": 5.266666667,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "frame_rate": 24,
+    "start_time": 1,
+    "duration": 2.5,
+    "select_every_nth": 2
+   },
+   "preset": "ltx",
+   "expected": {
+    "count": 25,
+    "frame_rate": 12.0,
+    "seconds": 2.083333333,
+    "clip_start": 1.0,
+    "clip_end": 3.083333333,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "frame_rate": 12.5,
+    "start_time": 1
+   },
+   "preset": null,
+   "expected": {
+    "count": 113,
+    "frame_rate": 12.5,
+    "seconds": 9.04,
+    "clip_start": 1.0,
+    "clip_end": 10.04,
+    "estimate": true
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 11
+   },
+   "preset": null,
+   "expected": {
+    "count": 0,
+    "frame_rate": 30.0,
+    "seconds": 0.0,
+    "clip_start": 11.0,
+    "clip_end": 11.0,
+    "estimate": true
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "skip_first_frames": 3,
+    "select_every_nth": 3,
+    "frame_load_cap": 30
+   },
+   "preset": "list",
+   "expected": {
+    "count": 25,
+    "frame_rate": 10.0,
+    "seconds": 2.5,
+    "clip_start": 0.1,
+    "clip_end": 2.6,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "frame_load_cap": 3
+   },
+   "preset": "ltx",
+   "expected": {
+    "count": 1,
+    "frame_rate": 30.0,
+    "seconds": 0.033333333,
+    "clip_start": 0.0,
+    "clip_end": 0.033333333,
+    "estimate": false
+   }
+  },
+  {
+   "info": "ntsc",
+   "settings": {
+    "start_time": 3.3,
+    "frame_load_cap": 121
+   },
+   "preset": "ltx",
+   "expected": {
+    "count": 121,
+    "frame_rate": 29.97002997,
+    "seconds": 4.037366667,
+    "clip_start": 3.3033,
+    "clip_end": 7.340666667,
+    "estimate": false
+   }
+  },
+  {
+   "info": "webm",
+   "settings": {
+    "frame_load_cap": 121
+   },
+   "preset": null,
+   "expected": {
+    "count": 84,
+    "frame_rate": 24.0,
+    "seconds": 3.5,
+    "clip_start": 0.0,
+    "clip_end": 3.5,
+    "estimate": true
+   }
+  },
+  {
+   "info": "webm",
+   "settings": {
+    "duration": 1
+   },
+   "preset": null,
+   "expected": {
+    "count": 24,
+    "frame_rate": 24.0,
+    "seconds": 1.0,
+    "clip_start": 0.0,
+    "clip_end": 1.0,
+    "estimate": true
+   }
+  },
+  {
+   "info": "phone",
+   "settings": {
+    "duration": 2
+   },
+   "preset": null,
+   "expected": {
+    "count": 60,
+    "frame_rate": 29.87,
+    "seconds": 2.008704386,
+    "clip_start": 0.0,
+    "clip_end": 2.008704386,
+    "estimate": true
+   }
+  },
+  {
+   "info": "phone",
+   "settings": {
+    "frame_rate": 24,
+    "duration": 2
+   },
+   "preset": null,
+   "expected": {
+    "count": 48,
+    "frame_rate": 24.0,
+    "seconds": 2.0,
+    "clip_start": 0.0,
+    "clip_end": 2.0,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "frame_load_cap": 295,
+    "skip_first_frames": 4
+   },
+   "preset": null,
+   "expected": {
+    "count": 295,
+    "frame_rate": 30.0,
+    "seconds": 9.833333333,
+    "clip_start": 0.133333333,
+    "clip_end": 9.966666667,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "frame_load_cap": 300
+   },
+   "preset": null,
+   "expected": {
+    "count": 300,
+    "frame_rate": 30.0,
+    "seconds": 10.0,
+    "clip_start": 0.0,
+    "clip_end": 10.0,
+    "estimate": true
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "frame_load_cap": 9
+   },
+   "preset": "list",
+   "expected": {
+    "count": 0,
+    "frame_rate": 30.0,
+    "seconds": 0.0,
+    "clip_start": 0.0,
+    "clip_end": 0.0,
+    "estimate": false
+   }
+  },
+  {
+   "info": "phone",
+   "settings": {
+    "frame_load_cap": 30,
+    "start_time": 1
+   },
+   "preset": null,
+   "expected": {
+    "count": 30,
+    "frame_rate": 29.87,
+    "seconds": 1.004352193,
+    "clip_start": 1.004352193,
+    "clip_end": 2.008704386,
+    "estimate": false
+   }
+  },
+  {
+   "info": "webm",
+   "settings": {
+    "frame_load_cap": 30
+   },
+   "preset": null,
+   "expected": {
+    "count": 30,
+    "frame_rate": 24.0,
+    "seconds": 1.25,
+    "clip_start": 0.0,
+    "clip_end": 1.25,
+    "estimate": false
+   }
+  },
+  {
+   "info": "ntsc",
+   "settings": {
+    "start_time": 6.9,
+    "duration": 0.3,
+    "frame_rate": 24,
+    "skip_first_frames": 5,
+    "select_every_nth": 2
+   },
+   "preset": null,
+   "expected": {
+    "count": 1,
+    "frame_rate": 12.0,
+    "seconds": 0.083333333,
+    "clip_start": 7.108333333,
+    "clip_end": 7.191666667,
+    "estimate": false
+   }
+  },
+  {
+   "info": "phone",
+   "settings": {
+    "start_time": 1.234,
+    "duration": 0.3,
+    "skip_first_frames": 5,
+    "select_every_nth": 2,
+    "frame_load_cap": 121
+   },
+   "preset": "list",
+   "expected": {
+    "count": 0,
+    "frame_rate": 14.935,
+    "seconds": 0.0,
+    "clip_start": 1.40609307,
+    "clip_end": 1.40609307,
+    "estimate": true
+   }
+  },
+  {
+   "info": "ntsc",
+   "settings": {
+    "start_time": 0.5,
+    "duration": 0.3,
+    "frame_rate": 29.97,
+    "skip_first_frames": 1,
+    "select_every_nth": 3
+   },
+   "preset": null,
+   "expected": {
+    "count": 3,
+    "frame_rate": 9.99,
+    "seconds": 0.3003003,
+    "clip_start": 0.5333667,
+    "clip_end": 0.833667,
+    "estimate": false
+   }
+  },
+  {
+   "info": "ntsc",
+   "settings": {
+    "start_time": 6.9,
+    "frame_rate": 24,
+    "select_every_nth": 2,
+    "frame_load_cap": 121
+   },
+   "preset": "list",
+   "expected": {
+    "count": 49,
+    "frame_rate": 12.0,
+    "seconds": 4.083333333,
+    "clip_start": 6.9,
+    "clip_end": 10.983333333,
+    "estimate": true
+   }
+  },
+  {
+   "info": "phone",
+   "settings": {
+    "start_time": 3,
+    "duration": 2.75,
+    "skip_first_frames": 1,
+    "select_every_nth": 1
+   },
+   "preset": "ltx",
+   "expected": {
+    "count": 81,
+    "frame_rate": 29.87,
+    "seconds": 2.711750921,
+    "clip_start": 3.046534985,
+    "clip_end": 5.758285906,
+    "estimate": true
+   }
+  },
+  {
+   "info": "phone",
+   "settings": {
+    "start_time": 0.5,
+    "duration": 1,
+    "frame_rate": 16,
+    "skip_first_frames": 5,
+    "select_every_nth": 2,
+    "frame_load_cap": 121
+   },
+   "preset": "list",
+   "expected": {
+    "count": 0,
+    "frame_rate": 8.0,
+    "seconds": 0.0,
+    "clip_start": 0.8125,
+    "clip_end": 0.8125,
+    "estimate": false
+   }
+  },
+  {
+   "info": "webm",
+   "settings": {
+    "start_time": 6.9,
+    "duration": 2.75,
+    "frame_rate": 29.97,
+    "select_every_nth": 2
+   },
+   "preset": "h3",
+   "expected": {
+    "count": 0,
+    "frame_rate": 14.985,
+    "seconds": 0.0,
+    "clip_start": 6.9,
+    "clip_end": 6.9,
+    "estimate": true
+   }
+  },
+  {
+   "info": "ntsc",
+   "settings": {
+    "start_time": 1.234,
+    "skip_first_frames": 5,
+    "select_every_nth": 3,
+    "frame_load_cap": 49
+   },
+   "preset": "h3",
+   "expected": {
+    "count": 39,
+    "frame_rate": 9.99000999,
+    "seconds": 3.9039,
+    "clip_start": 1.4014,
+    "clip_end": 5.3053,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "duration": 2.75,
+    "frame_rate": 16,
+    "select_every_nth": 2
+   },
+   "preset": "list",
+   "expected": {
+    "count": 0,
+    "frame_rate": 8.0,
+    "seconds": 0.0,
+    "clip_start": 0.0,
+    "clip_end": 0.0,
+    "estimate": false
+   }
+  },
+  {
+   "info": "ntsc",
+   "settings": {
+    "duration": 1,
+    "frame_rate": 16,
+    "skip_first_frames": 1,
+    "select_every_nth": 1
+   },
+   "preset": null,
+   "expected": {
+    "count": 15,
+    "frame_rate": 16.0,
+    "seconds": 0.9375,
+    "clip_start": 0.0625,
+    "clip_end": 1.0,
+    "estimate": false
+   }
+  },
+  {
+   "info": "phone",
+   "settings": {
+    "start_time": 6.9,
+    "duration": 1,
+    "frame_rate": 29.97,
+    "skip_first_frames": 1,
+    "select_every_nth": 3,
+    "frame_load_cap": 9
+   },
+   "preset": null,
+   "expected": {
+    "count": 1,
+    "frame_rate": 9.99,
+    "seconds": 0.1001001,
+    "clip_start": 6.9333667,
+    "clip_end": 7.0334668,
+    "estimate": true
+   }
+  },
+  {
+   "info": "webm",
+   "settings": {
+    "skip_first_frames": 5,
+    "select_every_nth": 3
+   },
+   "preset": "ltx",
+   "expected": {
+    "count": 25,
+    "frame_rate": 8.0,
+    "seconds": 3.125,
+    "clip_start": 0.208333333,
+    "clip_end": 3.333333333,
+    "estimate": true
+   }
+  },
+  {
+   "info": "phone",
+   "settings": {
+    "start_time": 1.234,
+    "duration": 1,
+    "skip_first_frames": 5,
+    "select_every_nth": 1,
+    "frame_load_cap": 49
+   },
+   "preset": "h3",
+   "expected": {
+    "count": 22,
+    "frame_rate": 29.87,
+    "seconds": 0.736524941,
+    "clip_start": 1.40609307,
+    "clip_end": 2.142618011,
+    "estimate": true
+   }
+  },
+  {
+   "info": "webm",
+   "settings": {
+    "start_time": 0.5,
+    "duration": 2.75,
+    "frame_rate": 16,
+    "skip_first_frames": 1,
+    "select_every_nth": 3,
+    "frame_load_cap": 121
+   },
+   "preset": null,
+   "expected": {
+    "count": 15,
+    "frame_rate": 5.333333333,
+    "seconds": 2.8125,
+    "clip_start": 0.5625,
+    "clip_end": 3.375,
+    "estimate": false
+   }
+  },
+  {
+   "info": "webm",
+   "settings": {
+    "start_time": 3,
+    "duration": 0.3,
+    "frame_rate": 24,
+    "skip_first_frames": 1,
+    "select_every_nth": 2,
+    "frame_load_cap": 49
+   },
+   "preset": "h3",
+   "expected": {
+    "count": 0,
+    "frame_rate": 12.0,
+    "seconds": 0.0,
+    "clip_start": 3.041666667,
+    "clip_end": 3.041666667,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 3,
+    "duration": 1,
+    "skip_first_frames": 1,
+    "select_every_nth": 3,
+    "frame_load_cap": 9
+   },
+   "preset": null,
+   "expected": {
+    "count": 9,
+    "frame_rate": 10.0,
+    "seconds": 0.9,
+    "clip_start": 3.033333333,
+    "clip_end": 3.933333333,
+    "estimate": false
+   }
+  },
+  {
+   "info": "webm",
+   "settings": {
+    "start_time": 3,
+    "duration": 1,
+    "frame_rate": 24,
+    "skip_first_frames": 5,
+    "select_every_nth": 3,
+    "frame_load_cap": 49
+   },
+   "preset": "list",
+   "expected": {
+    "count": 0,
+    "frame_rate": 8.0,
+    "seconds": 0.0,
+    "clip_start": 3.208333333,
+    "clip_end": 3.208333333,
+    "estimate": true
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 6.9,
+    "skip_first_frames": 1,
+    "select_every_nth": 2,
+    "frame_load_cap": 121
+   },
+   "preset": "h3",
+   "expected": {
+    "count": 39,
+    "frame_rate": 15.0,
+    "seconds": 2.6,
+    "clip_start": 6.933333333,
+    "clip_end": 9.533333333,
+    "estimate": true
+   }
+  },
+  {
+   "info": "webm",
+   "settings": {
+    "start_time": 0.5,
+    "duration": 1,
+    "skip_first_frames": 1,
+    "select_every_nth": 2,
+    "frame_load_cap": 49
+   },
+   "preset": "h3",
+   "expected": {
+    "count": 5,
+    "frame_rate": 12.0,
+    "seconds": 0.416666667,
+    "clip_start": 0.541666667,
+    "clip_end": 0.958333333,
+    "estimate": true
+   }
+  },
+  {
+   "info": "phone",
+   "settings": {
+    "frame_rate": 29.97,
+    "skip_first_frames": 5,
+    "select_every_nth": 3,
+    "frame_load_cap": 9
+   },
+   "preset": "h3",
+   "expected": {
+    "count": 5,
+    "frame_rate": 9.99,
+    "seconds": 0.500500501,
+    "clip_start": 0.1668335,
+    "clip_end": 0.667334001,
+    "estimate": false
+   }
+  },
+  {
+   "info": "ntsc",
+   "settings": {
+    "start_time": 1.234,
+    "duration": 0.3,
+    "frame_rate": 24,
+    "select_every_nth": 3,
+    "frame_load_cap": 121
+   },
+   "preset": null,
+   "expected": {
+    "count": 3,
+    "frame_rate": 8.0,
+    "seconds": 0.375,
+    "clip_start": 1.234,
+    "clip_end": 1.609,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 6.9,
+    "duration": 1,
+    "frame_rate": 24,
+    "skip_first_frames": 5,
+    "select_every_nth": 1,
+    "frame_load_cap": 121
+   },
+   "preset": "ltx",
+   "expected": {
+    "count": 17,
+    "frame_rate": 24.0,
+    "seconds": 0.708333333,
+    "clip_start": 7.108333333,
+    "clip_end": 7.816666667,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 1.234,
+    "duration": 0.3,
+    "frame_rate": 29.97,
+    "skip_first_frames": 1,
+    "select_every_nth": 2,
+    "frame_load_cap": 9
+   },
+   "preset": null,
+   "expected": {
+    "count": 4,
+    "frame_rate": 14.985,
+    "seconds": 0.2669336,
+    "clip_start": 1.2673667,
+    "clip_end": 1.5343003,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 6.9,
+    "duration": 0.3,
+    "frame_rate": 24,
+    "skip_first_frames": 5,
+    "select_every_nth": 1,
+    "frame_load_cap": 49
+   },
+   "preset": "h3",
+   "expected": {
+    "count": 0,
+    "frame_rate": 24.0,
+    "seconds": 0.0,
+    "clip_start": 7.108333333,
+    "clip_end": 7.108333333,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 6.9,
+    "duration": 1,
+    "frame_rate": 29.97,
+    "select_every_nth": 2,
+    "frame_load_cap": 49
+   },
+   "preset": "h3",
+   "expected": {
+    "count": 5,
+    "frame_rate": 14.985,
+    "seconds": 0.333667,
+    "clip_start": 6.9,
+    "clip_end": 7.233667,
+    "estimate": false
+   }
+  },
+  {
+   "info": "phone",
+   "settings": {
+    "start_time": 1.234,
+    "duration": 2.75,
+    "frame_rate": 24,
+    "skip_first_frames": 1,
+    "select_every_nth": 3,
+    "frame_load_cap": 121
+   },
+   "preset": null,
+   "expected": {
+    "count": 22,
+    "frame_rate": 8.0,
+    "seconds": 2.75,
+    "clip_start": 1.275666667,
+    "clip_end": 4.025666667,
+    "estimate": false
+   }
+  },
+  {
+   "info": "phone",
+   "settings": {
+    "start_time": 0.5,
+    "duration": 0.3,
+    "skip_first_frames": 1,
+    "select_every_nth": 3,
+    "frame_load_cap": 121
+   },
+   "preset": "ltx",
+   "expected": {
+    "count": 1,
+    "frame_rate": 9.956666667,
+    "seconds": 0.100435219,
+    "clip_start": 0.535654503,
+    "clip_end": 0.636089722,
+    "estimate": true
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 3,
+    "duration": 1,
+    "frame_rate": 29.97,
+    "skip_first_frames": 1,
+    "select_every_nth": 1
+   },
+   "preset": "h3",
+   "expected": {
+    "count": 22,
+    "frame_rate": 29.97,
+    "seconds": 0.734067401,
+    "clip_start": 3.0333667,
+    "clip_end": 3.767434101,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 0.5,
+    "skip_first_frames": 5,
+    "select_every_nth": 3,
+    "frame_load_cap": 9
+   },
+   "preset": "list",
+   "expected": {
+    "count": 0,
+    "frame_rate": 10.0,
+    "seconds": 0.0,
+    "clip_start": 0.666666667,
+    "clip_end": 0.666666667,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "duration": 2.75,
+    "select_every_nth": 3,
+    "frame_load_cap": 49
+   },
+   "preset": "ltx",
+   "expected": {
+    "count": 25,
+    "frame_rate": 10.0,
+    "seconds": 2.5,
+    "clip_start": 0.0,
+    "clip_end": 2.5,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 6.9,
+    "duration": 2.75,
+    "skip_first_frames": 5,
+    "select_every_nth": 1,
+    "frame_load_cap": 49
+   },
+   "preset": "ltx",
+   "expected": {
+    "count": 49,
+    "frame_rate": 30.0,
+    "seconds": 1.633333333,
+    "clip_start": 7.066666667,
+    "clip_end": 8.7,
+    "estimate": false
+   }
+  },
+  {
+   "info": "webm",
+   "settings": {
+    "start_time": 6.9,
+    "duration": 2.75,
+    "skip_first_frames": 1,
+    "select_every_nth": 1,
+    "frame_load_cap": 9
+   },
+   "preset": null,
+   "expected": {
+    "count": 0,
+    "frame_rate": 24.0,
+    "seconds": 0.0,
+    "clip_start": 6.958333333,
+    "clip_end": 6.958333333,
+    "estimate": true
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 0.5,
+    "duration": 0.3,
+    "frame_rate": 24,
+    "select_every_nth": 1,
+    "frame_load_cap": 121
+   },
+   "preset": "list",
+   "expected": {
+    "count": 0,
+    "frame_rate": 24.0,
+    "seconds": 0.0,
+    "clip_start": 0.5,
+    "clip_end": 0.5,
+    "estimate": false
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 1.234,
+    "duration": 0.3,
+    "frame_rate": 24,
+    "skip_first_frames": 5,
+    "select_every_nth": 3,
+    "frame_load_cap": 121
+   },
+   "preset": null,
+   "expected": {
+    "count": 1,
+    "frame_rate": 8.0,
+    "seconds": 0.125,
+    "clip_start": 1.442333333,
+    "clip_end": 1.567333333,
+    "estimate": false
+   }
+  },
+  {
+   "info": "phone",
+   "settings": {
+    "start_time": 1.234,
+    "select_every_nth": 1
+   },
+   "preset": null,
+   "expected": {
+    "count": 172,
+    "frame_rate": 29.87,
+    "seconds": 5.758285906,
+    "clip_start": 1.238701038,
+    "clip_end": 6.996986943,
+    "estimate": true
+   }
+  },
+  {
+   "info": "cfr30",
+   "settings": {
+    "start_time": 3,
+    "skip_first_frames": 5,
+    "select_every_nth": 3,
+    "frame_load_cap": 121
+   },
+   "preset": "h3",
+   "expected": {
+    "count": 56,
+    "frame_rate": 10.0,
+    "seconds": 5.6,
+    "clip_start": 3.166666667,
+    "clip_end": 8.766666667,
+    "estimate": true
+   }
+  },
+  {
+   "info": "ntsc",
+   "settings": {
+    "start_time": 1.234,
+    "frame_rate": 24,
+    "skip_first_frames": 1,
+    "select_every_nth": 3,
+    "frame_load_cap": 121
+   },
+   "preset": "h3",
+   "expected": {
+    "count": 73,
+    "frame_rate": 8.0,
+    "seconds": 9.125,
+    "clip_start": 1.275666667,
+    "clip_end": 10.400666667,
+    "estimate": true
+   }
+  },
+  {
+   "info": "webm",
+   "settings": {
+    "start_time": 1.234,
+    "duration": 0.3,
+    "frame_rate": 24,
+    "skip_first_frames": 1,
+    "select_every_nth": 1,
+    "frame_load_cap": 9
+   },
+   "preset": null,
+   "expected": {
+    "count": 6,
+    "frame_rate": 24.0,
+    "seconds": 0.25,
+    "clip_start": 1.275666667,
+    "clip_end": 1.525666667,
+    "estimate": false
+   }
+  },
+  {
+   "info": "phone",
+   "settings": {
+    "duration": 0.3,
+    "skip_first_frames": 1,
+    "select_every_nth": 2,
+    "frame_load_cap": 121
+   },
+   "preset": null,
+   "expected": {
+    "count": 4,
+    "frame_rate": 14.935,
+    "seconds": 0.267827251,
+    "clip_start": 0.033478406,
+    "clip_end": 0.301305658,
+    "estimate": true
+   }
+  },
+  {
+   "info": "phone",
+   "settings": {
+    "duration": 1,
+    "frame_rate": 16,
+    "skip_first_frames": 5,
+    "select_every_nth": 2,
+    "frame_load_cap": 121
+   },
+   "preset": "list",
+   "expected": {
+    "count": 0,
+    "frame_rate": 8.0,
+    "seconds": 0.0,
+    "clip_start": 0.3125,
+    "clip_end": 0.3125,
+    "estimate": false
+   }
+  }
+ ]
+}

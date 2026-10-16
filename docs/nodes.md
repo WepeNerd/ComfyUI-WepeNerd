@@ -22,11 +22,80 @@ input. Pixels are copied exactly, with no scaling or interpolation.
 ## Load Video (Upload)
 
 Loads MP4, WebM, MKV, MOV, AVI, M4V, or GIF files from ComfyUI's input folder,
-including subfolders. Uses PyAV (also supplied by current ComfyUI); VHS and a
-separate FFmpeg executable are not required. Codec support depends on PyAV.
+including subfolders (hidden folders such as `.cache` are skipped). Uses PyAV (also
+supplied by current ComfyUI); VHS and a separate FFmpeg executable are not required.
+Codec support depends on PyAV. The node loads at the source resolution; resize the
+batch with a separate node.
 
 | Input | Description |
 |---|---|
+| `video` | Upload/select a video. GIF files can also be placed in the input folder and selected. |
+| `start_time` | Seconds into the video to start. The decoder jumps to the keyframe before it instead of decoding everything earlier, so late starts in long videos load fast. |
+| `duration` | Seconds to load from `start_time`; 0 loads to the end. |
+| `frame_load_cap` | Maximum frames to load; default 121 so a long video can't fill your RAM by accident. 0 loads all. |
+| `frame_rate` | 0 keeps source frames. A positive FPS samples the video timeline, dropping or repeating frames without interpolation. |
+| `skip_first_frames` | Frames skipped after `start_time` and rate conversion. |
+| `select_every_nth` | Keep every nth frame after skipping; 1 keeps all. |
+| `format` | A video model's frame-count rule, from the Frame Number Selector presets; default `None`. Picking a preset also sets `frame_rate` to the model's FPS (you can change it afterwards). |
+| `load_audio` | Enabled by default. Decode the selected clip's audio; disable for image-only workflows. |
+
+Below the settings, the node shows what will load before you run it: the source
+(size, FPS, length, frame count, audio, transparency), then the clip (frame count,
+output FPS, length, start time, and the RAM the batch needs). A note appears when
+nothing would load, when the count is outside the chosen preset's range, or when an
+uncapped load needs more than 8 GB. A `≈` marks counts that depend on where the file
+ends, or on variable frame timing, since container headers can be approximate.
+
+The source-video preview autoplays muted and loops over the clip that will load:
+from its start time for as long as the output lasts. Changing `start_time`,
+`duration`, `frame_load_cap`, skip, every nth, frame rate or format moves the preview
+to the new clip's start. While paused you can scrub anywhere; playing again returns to
+the clip. Use the controls to pause or unmute. Browser codec support determines which
+files can play inline.
+
+Processing order: start time → duration → frame rate → skip → every nth → cap →
+format trimming. For example, rate 10, skip 2, nth 2, and cap 3 selects resampled
+frames 2, 4, and 6, with an output rate of 5 FPS. Without a frame rate, `start_time`
+and `duration` keep the source frames nearest to times inside the window. Positive
+rates use FFmpeg's standard FPS filter with nearest timestamp rounding, on a grid that
+starts at `start_time`; source-frame choices can differ from VHS's OpenCV loader.
+
+Format presets come from `frame_number_presets.json`, shared with Frame Number
+Selector, so a preset you add there appears in both nodes. Load Video trims to the
+preset's rule (or its explicit list) without the list's upper limit: the largest
+valid count that doesn't exceed the cap. Too few frames, a cap below the preset's
+smallest count, or a start beyond the video ends with an explanatory error. Workflows
+saved with the old short names (`LTXV`, `H3`, `Wan`, `Hunyuan`, `Mochi`, `Cosmos`,
+`AnimateDiff`) load with the matching preset; `AnimateDiff` only constrained size, so
+it becomes `None`. Presets no longer change the image size.
+
+| Output | Description |
+|---|---|
+| `images` | One RGB float32 IMAGE batch `[frames, height, width, 3]` in 0–1. |
+| `frame_count` | The batch's actual length. |
+| `frame_rate` | The requested (or source) FPS divided by every nth. Native variable-rate videos report an average FPS; set a positive FPS for uniform timing. |
+| `audio` | ComfyUI's standard AUDIO for exactly the loaded clip, or `None` without an audio track or with `load_audio` off. |
+| `mask` | Transparency as a MASK (1 = transparent, as in Load Image) for WebM (VP8/VP9 with alpha), MOV (PNG, QuickTime Animation, ProRes 4444) and GIF. An opaque video gives a 64×64 empty mask, like Load Image. |
+| `width` / `height` | Size of `images`. |
+| `source_fps` | The file's average frame rate. |
+
+The new outputs follow the original four, so existing links are unchanged.
+The `audio` output preserves source sample rate and channels. It starts at the
+selected video interval and spans `frame_count / frame_rate` seconds after preset
+trimming. Audio remains at its original speed; every-nth selection reduces the output
+FPS accordingly. Missing audio at the interval's edges is padded with silence.
+Connect `audio` to a video combine/save node's audio input or to Preview Audio when a
+track is available.
+
+Long or high-resolution batches require RAM for the full output (about 24 MiB per
+1080p frame); the node's readout shows the total before you run it.
+
+Workflows saved before this version keep their settings: `custom_width` and
+`custom_height` are dropped, the new `start_time` and `duration` load as 0, and
+`frame_load_cap` keeps its saved value (including 0). API prompts written for the
+previous version still run, since every input except `video` has a default.
+
+---|---|
 | `video` | Upload/select a video. GIF files can also be placed in the input folder and selected. |
 | `frame_rate` | 0 keeps source frames. A positive FPS samples the video timeline, dropping or repeating frames without interpolation. |
 | `frame_load_cap` | Maximum selected frames; 0 means all. Decoding stops at the cap. |
@@ -95,6 +164,7 @@ MiniMax H3.
 | Wan 2.1 / 2.2 14B | 4n+1 | 5–161 | 16 |
 | Wan 2.2 5B | 4n+1 | 5–161 | 24 |
 | HunyuanVideo | 4n+1 | 5–129 | 24 |
+| Cosmos 1.0 | 8n+1 | 9–121 | 24 |
 | Mochi 1 | 6n+1 | 7–163 | 30 |
 
 MiniMax H3's trained window is roughly 107–362 frames (4–15 s); shorter counts on

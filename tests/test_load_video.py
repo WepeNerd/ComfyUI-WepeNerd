@@ -2,6 +2,7 @@
 
 from fractions import Fraction
 import importlib.util
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -16,6 +17,7 @@ import torch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parents[1]))
+sys.path.insert(0, str(ROOT))  # load_video_node imports the shared presets from frame_number_node.
 spec = importlib.util.spec_from_file_location("wepenerd_video_test", ROOT / "load_video_node.py")
 video = importlib.util.module_from_spec(spec)
 # The decoder runs on CPU; importing host GPU initialization is unnecessary here.
@@ -67,6 +69,38 @@ def write_video(path, count=30, rate=Fraction(30), width=34, height=18, timestam
                 container.mux(packet)
 
 
+def write_gop_mp4(path, count=90, rate=30):
+    """MPEG-4 with B-frames and a keyframe every 24 frames, so seeking lands mid-file."""
+    with av.open(str(path), "w") as container:
+        stream = container.add_stream("mpeg4", rate=rate)
+        stream.width, stream.height = 64, 32
+        stream.pix_fmt = "yuv420p"
+        stream.codec_context.max_b_frames = 2
+        stream.codec_context.gop_size = 24
+        stream.codec_context.options = {"qscale": "2"}
+        for index in range(count):
+            pixels = np.full((32, 64, 3), (index * 2) % 256, dtype=np.uint8)
+            for packet in stream.encode(av.VideoFrame.from_ndarray(pixels, format="rgb24")):
+                container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
+
+
+def write_alpha_video(path, count=6):
+    with av.open(str(path), "w") as container:
+        stream = container.add_stream("ffv1", rate=10)
+        stream.width, stream.height, stream.pix_fmt = 8, 4, "bgra"
+        for index in range(count):
+            pixels = np.zeros((4, 8, 4), dtype=np.uint8)
+            pixels[..., 0] = index * 10
+            pixels[..., 3] = 255
+            pixels[:, 4:, 3] = 51  # Right half 80% transparent.
+            for packet in stream.encode(av.VideoFrame.from_ndarray(pixels, format="rgba")):
+                container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
+
+
 class LoadVideoTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -81,6 +115,10 @@ class LoadVideoTests(unittest.TestCase):
         self.node = video.WN_LoadVideo()
 
     def load(self, **kwargs):
+        """images, frame_count, frame_rate, audio: the outputs most tests check."""
+        return self.load_all(**kwargs)[:4]
+
+    def load_all(self, **kwargs):
         return self.node.load_video("clip.mkv", **kwargs)
 
     def assert_frames(self, images, expected):
@@ -140,11 +178,11 @@ class LoadVideoTests(unittest.TestCase):
                     container.mux(packet)
             for packet in stream.encode():
                 container.mux(packet)
-        native, count, _, _audio = self.node.load_video(path.name)
+        native, count, _, _audio = self.node.load_video(path.name)[:4]
         self.assertEqual(count, 30)
         np.testing.assert_allclose(native[:, 0, 0, 0].numpy() * 255, np.arange(30) * 6, atol=6)
         sampled, count, _, _audio = self.node.load_video(path.name, frame_rate=30,
-                                               skip_first_frames=3, select_every_nth=4)
+                                                         skip_first_frames=3, select_every_nth=4)[:4]
         torch.testing.assert_close(sampled, native[3::4])
         self.assertEqual(count, len(native[3::4]))
 
@@ -156,17 +194,24 @@ class LoadVideoTests(unittest.TestCase):
         self.assert_frames(images, [0, 1, 1, 1, 2, 2, 2, 3])
 
     def test_presets(self):
+        # Presets only trim the frame count; old short names still work in saved workflows.
         expected = {
-            "None": (30, 18, 34), "AnimateDiff": (30, 16, 32),
-            "Mochi": (25, 16, 32), "LTXV": (25, 32, 32),
-            "Hunyuan": (29, 16, 32), "Cosmos": (25, 16, 32),
-            "Wan": (29, 16, 32), "H3": (22, 32, 32),
+            "None": 30, "AnimateDiff": 30, "Mochi": 25, "LTXV": 25, "Hunyuan": 29, "Cosmos": 25,
+            "Wan": 29, "H3": 22, "LTX-2.x (8n+1, 24 fps)": 25, "MiniMax H3 (17n+5, 24 fps)": 22,
+            "Wan 2.2 5B (4n+1, 24 fps)": 29, "Mochi 1 (6n+1, 30 fps)": 25,
         }
-        for preset, shape in expected.items():
+        for preset, count in expected.items():
             with self.subTest(preset=preset):
-                images, count, _, _audio = self.load(format=preset)
-                self.assertEqual(tuple(images.shape), (*shape, 3))
-                self.assertEqual(count, shape[0])
+                images, frames, _, _audio = self.load(format=preset)
+                self.assertEqual(tuple(images.shape), (count, 18, 34, 3))
+                self.assertEqual(frames, count)
+                self.assertIs(self.node.VALIDATE_INPUTS("clip.mkv", preset), True)
+        self.assertIsInstance(self.node.VALIDATE_INPUTS("clip.mkv", "Unknown"), str)
+
+    def test_format_list_comes_from_the_shared_presets(self):
+        options, config = self.node.INPUT_TYPES()["optional"]["format"]
+        self.assertEqual(options, ["None", *video.load_presets()])
+        self.assertEqual(config["default"], "None")
 
     def test_cap_never_exceeded_by_preset(self):
         images, count, _, _audio = self.load(format="Wan", frame_load_cap=8)
@@ -188,13 +233,13 @@ class LoadVideoTests(unittest.TestCase):
             with self.subTest(rate=rate), self.assertRaisesRegex(ValueError, "No frames selected"):
                 self.load(frame_rate=rate, skip_first_frames=100)
 
-    def test_custom_dimensions(self):
-        images, _, _, _audio = self.load(custom_width=68)
-        self.assertEqual(tuple(images.shape[1:]), (36, 68, 3))
-        images, _, _, _audio = self.load(custom_height=36)
-        self.assertEqual(tuple(images.shape[1:]), (36, 68, 3))
-        images, _, _, _audio = self.load(custom_width=40, custom_height=24)
-        self.assertEqual(tuple(images.shape[1:]), (24, 40, 3))
+    def test_resizing_is_left_to_other_nodes(self):
+        inputs = self.node.INPUT_TYPES()
+        self.assertEqual(list(inputs["required"]), ["video"])
+        self.assertEqual(list(inputs["optional"]), [
+            "start_time", "duration", "frame_load_cap", "frame_rate", "skip_first_frames",
+            "select_every_nth", "format", "load_audio"])
+        self.assertEqual(inputs["optional"]["frame_load_cap"][1]["default"], 121)
 
     def test_file_listing_and_upload(self):
         nested = self.root / "nested"
@@ -226,19 +271,22 @@ class LoadVideoTests(unittest.TestCase):
         self.path.rename(self.root / "closed.mkv")
 
     def test_cap_stops_decoding(self):
+        video.probe_video(self.path)  # The node reads (and caches) the file's facts once for its progress bar.
+        interrupt.reset_mock()
         images, count, _, _audio = self.load(frame_load_cap=2)
         self.assert_frames(images, [0, 1])
         self.assertEqual(count, 2)
         self.assertEqual(interrupt.call_count, 4)
 
     def test_invalid_settings(self):
-        for settings in ({"frame_rate": float("nan")}, {"frame_rate": -1},
-                         {"frame_load_cap": -1}, {"select_every_nth": 0}, {"format": "unknown"}):
+        for settings in ({"frame_rate": float("nan")}, {"frame_rate": -1}, {"start_time": -1},
+                         {"duration": float("inf")}, {"frame_load_cap": -1}, {"select_every_nth": 0},
+                         {"format": "unknown"}):
             with self.subTest(settings=settings), self.assertRaises(ValueError):
                 self.load(**settings)
 
     def test_audio_output_is_appended_and_missing_track_is_none(self):
-        self.assertEqual(self.node.RETURN_TYPES, ("IMAGE", "INT", "FLOAT", "AUDIO"))
+        self.assertEqual(self.node.RETURN_TYPES[:4], ("IMAGE", "INT", "FLOAT", "AUDIO"))
         self.assertIsNone(self.load()[3])
 
     def test_audio_can_be_disabled_without_decoding(self):
@@ -280,6 +328,138 @@ class LoadVideoTests(unittest.TestCase):
         self.assertFalse(audio["waveform"][:, :, :2000].any())
         np.testing.assert_allclose(audio["waveform"][0, 0, 2000:].numpy(),
                                    np.arange(2000, dtype=np.float32) / 8000)
+
+
+    def test_start_time_and_duration(self):
+        images, count, rate, _audio = self.load(start_time=0.5, duration=0.3)
+        self.assert_frames(images, [15, 16, 17, 18, 19, 20, 21, 22, 23])
+        self.assertEqual((count, rate), (9, 30))
+        # Off-grid times pick the nearest source frames.
+        images, _, _, _audio = self.load(start_time=0.51, duration=0.1)
+        self.assert_frames(images, [15, 16, 17])
+        # Resampling starts its grid at start_time; skip, nth and cap apply inside the window.
+        images, count, rate, _audio = self.load(frame_rate=10, start_time=0.2, duration=0.5,
+                                               skip_first_frames=1, select_every_nth=2)
+        self.assert_frames(images, [10, 16])  # The same grid as from the top: rate 10 picks frames 1, 4, 7, 10, ...
+        self.assertEqual((count, rate), (2, 5))
+        with self.assertRaisesRegex(ValueError, "No frames selected"):
+            self.load(start_time=5)
+
+    def test_seeking_matches_decoding_from_the_top(self):
+        path = self.root / "gop.mp4"
+        write_gop_mp4(path)
+
+        def refuse(*args, **kwargs):
+            raise av.error.FFmpegError(1, "seek refused")
+
+        for settings in ({"start_time": 1.5}, {"start_time": 2.0, "duration": 0.5},
+                         {"start_time": 1.234, "frame_rate": 24}, {"start_time": 0.9, "frame_rate": 12.5},
+                         {"start_time": 2.5, "skip_first_frames": 2, "select_every_nth": 2}):
+            with self.subTest(settings=settings):
+                seeked = self.node.load_video(path.name, frame_load_cap=0, **settings)[0]
+                with patch.object(video, "seek", refuse):
+                    decoded = self.node.load_video(path.name, frame_load_cap=0, **settings)[0]
+                torch.testing.assert_close(seeked, decoded, rtol=0, atol=0)
+
+    def test_inexact_seek_falls_back_to_the_start(self):
+        path = self.root / "gop.mp4"
+        write_gop_mp4(path)
+        expected = self.node.load_video(path.name, start_time=2.0, frame_load_cap=5)[0]
+        real_seek = video.seek
+        calls = []
+
+        def overshoot(container, stream, decoder, seconds):
+            calls.append(seconds)
+            real_seek(container, stream, decoder, seconds + 1 if len(calls) == 1 else seconds)
+
+        with patch.object(video, "seek", overshoot):
+            images = self.node.load_video(path.name, start_time=2.0, frame_load_cap=5)[0]
+        self.assertEqual(len(calls), 2)
+        torch.testing.assert_close(images, expected, rtol=0, atol=0)
+
+    def test_audio_follows_start_time(self):
+        write_video(self.path, count=10, rate=Fraction(10), audio=True)
+        for frame_rate in (0, 10):
+            with self.subTest(frame_rate=frame_rate):
+                audio = self.load(frame_rate=frame_rate, start_time=0.3, duration=0.4)[3]
+                expected = np.arange(2400, 5600, dtype=np.float32) / 8000
+                np.testing.assert_allclose(audio["waveform"][0, 0].numpy(), expected)
+
+    def test_size_rate_and_empty_mask_outputs(self):
+        self.assertEqual(self.node.RETURN_NAMES[4:], ("mask", "width", "height", "source_fps"))
+        _, count, rate, _, mask, width, height, source_fps = self.load_all(select_every_nth=2)
+        self.assertEqual((count, rate, width, height, source_fps), (15, 15, 34, 18, 30))
+        self.assertEqual(tuple(mask.shape), (1, 64, 64))
+        self.assertFalse(mask.any())
+
+    def test_transparency_becomes_a_mask(self):
+        write_alpha_video(self.root / "alpha.mkv")
+        images, count, _, _, mask, *_ = self.node.load_video("alpha.mkv", select_every_nth=2)
+        self.assertEqual((count, tuple(images.shape), tuple(mask.shape)), (3, (3, 4, 8, 3), (3, 4, 8)))
+        self.assertTrue(mask.is_contiguous())
+        torch.testing.assert_close(mask[:, :, :4], torch.zeros(3, 4, 4))
+        torch.testing.assert_close(mask[:, :, 4:], torch.full((3, 4, 4), 0.8))
+        self.assertEqual((images[:, 0, 0, 0] * 255).round().int().tolist(), [0, 20, 40])
+        self.assertTrue(video.probe_video(self.root / "alpha.mkv")["alpha"])
+
+    @unittest.skipUnless("libvpx-vp9" in av.codecs_available, "PyAV was built without libvpx")
+    def test_vp9_transparency_uses_libvpx(self):
+        path = self.root / "alpha.webm"
+        with av.open(str(path), "w") as container:
+            stream = container.add_stream("libvpx-vp9", rate=10)
+            stream.width, stream.height, stream.pix_fmt = 16, 16, "yuva420p"
+            stream.options = {"lossless": "1"}
+            for _ in range(3):
+                pixels = np.zeros((16, 16, 4), dtype=np.uint8)
+                pixels[..., 3] = 255
+                pixels[:, 8:, 3] = 0
+                for packet in stream.encode(av.VideoFrame.from_ndarray(pixels, format="rgba")):
+                    container.mux(packet)
+            for packet in stream.encode():
+                container.mux(packet)
+        mask = self.node.load_video("alpha.webm")[4]
+        self.assertEqual(tuple(mask.shape), (3, 16, 16))
+        self.assertLess(float(mask[:, :, :8].max()), 0.05)
+        self.assertGreater(float(mask[:, :, 8:].min()), 0.95)
+
+    def test_probe_reports_source_facts(self):
+        write_video(self.path, count=12, rate=Fraction(24), audio=True)
+        info = video.probe_video(self.path)
+        self.assertEqual({key: info[key] for key in ("width", "height", "rotation", "fps", "frames", "audio", "alpha")},
+                         {"width": 34, "height": 18, "rotation": 0, "fps": 24.0, "frames": 12, "audio": True, "alpha": False})
+        self.assertAlmostEqual(info["duration"], 0.5, places=2)
+
+    def test_plan_predicts_the_loaded_clip(self):
+        info = video.probe_video(self.path)
+        for settings in ({}, {"frame_load_cap": 7}, {"start_time": 0.5, "duration": 0.3},
+                         {"frame_rate": 10, "start_time": 0.2, "duration": 0.5, "skip_first_frames": 1, "select_every_nth": 2},
+                         {"skip_first_frames": 4, "select_every_nth": 3, "frame_load_cap": 5}):
+            with self.subTest(settings=settings):
+                plan = video.plan_clip(info, **settings)
+                _, count, rate, _audio = self.load(**settings)
+                self.assertEqual((plan["count"], plan["frame_rate"]), (count, rate))
+
+    def test_plan_matches_the_browser_on_shared_cases(self):
+        shared = json.loads((ROOT / "tests" / "load_video_plans.json").read_text(encoding="utf-8"))
+        for case in shared["cases"]:
+            preset = shared["presets"][case["preset"]] if case["preset"] else None
+            if preset is not None:
+                preset = {**preset, "frames": preset.get("frames")}
+            with self.subTest(case=case):
+                plan = video.plan_clip(shared["infos"][case["info"]], preset=preset, **case["settings"])
+                for key, value in case["expected"].items():
+                    self.assertAlmostEqual(plan[key], value, places=6) if isinstance(value, float) \
+                        else self.assertEqual(plan[key], value)
+
+    def test_listing_skips_hidden_folders_and_is_briefly_cached(self):
+        hidden = self.root / ".cache"
+        hidden.mkdir()
+        write_video(hidden / "skip.mkv", count=1)
+        self.assertEqual(video.list_videos(self.root), ["clip.mkv"])
+        write_video(self.root / "new.mkv", count=1)
+        self.assertEqual(video.list_videos(self.root), ["clip.mkv"])
+        with patch.object(video, "LIST_CACHE_SECONDS", 0):
+            self.assertEqual(video.list_videos(self.root), ["clip.mkv", "new.mkv"])
 
 
 if __name__ == "__main__":

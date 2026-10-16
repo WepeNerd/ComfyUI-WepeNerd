@@ -5,7 +5,7 @@ from .drag_resolution import WN_DragResolution
 from .slider_node import WN_Slider
 from .resize_megapixels_node import WN_ResizeMegapixels
 from .zoom_crop_node import WN_ZoomCrop
-from .load_video_node import WN_LoadVideo
+from .load_video_node import WN_LoadVideo, register_load_video_routes
 from .speedpaint_node import WN_Speedpaint
 from .liquify_node import WN_LiquifyImage
 from .paint_mask_node import WN_PaintMask
@@ -61,6 +61,7 @@ NODE_DISPLAY_NAME_MAPPINGS.update(FRAME_NUMBER_NAMES)
 
 register_speedpaint_routes()
 register_frame_number_routes()
+register_load_video_routes()
 register_module_cache_headers()
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]

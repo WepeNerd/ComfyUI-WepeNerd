@@ -8,8 +8,8 @@ Resolution tools, painting and image warping, and spatial LoRA masks for ComfyUI
 | **Resolution Suggest** | Calculate dimensions from a target size or scale factor |
 | **Resize Image Megapixels** | Resize an image batch to a target area without cropping |
 | **Zoom Crop** | Remove width/height pixels and pick the kept area with a one-click 5×5 picker |
-| **Load Video (Upload)** | Sample video into an IMAGE batch with frame controls, optional audio, VHS presets, and an autoplaying preview |
-| **Frame Number Selector** | Pick a frame count that is legal for LTX, MiniMax H3, Wan, Hunyuan or Mochi from a preset-filtered list |
+| **Load Video (Upload)** | Load a clip by start time, duration and frame cap into an IMAGE batch, with audio, transparency mask, model frame presets, a readout of what will load, and a preview that loops the clip |
+| **Frame Number Selector** | Pick a frame count that is legal for LTX, MiniMax H3, Wan, Hunyuan, Cosmos or Mochi from a preset-filtered list |
 | **Speedpaint** | Sketch from a blank canvas or imported image and output an IMAGE |
 | **Paint Mask** | Paint a MASK over an uploaded or connected image and pass the IMAGE downstream |
 | **Liquify Image** | Push-warp files or connected IMAGE batches with editable strokes and full-resolution output |
@@ -55,11 +55,12 @@ workflow.
   dimensions. Megapixel resizing retains the whole image, with small aspect changes
   possible from rounding.
 - **Load Video (Upload):** upload/select a video under **WepeNerd/Video** and
-  connect `images` to an IMAGE input. Set frame rate, skip, stride, and cap as
-  needed. Zero frame rate preserves source frames; zero cap loads all selected
-  frames. Format presets can trim the batch; `None` preserves its selected count.
-  The preview autoplays muted. Connect `audio` downstream to keep the selected
-  clip's soundtrack, or disable `load_audio` to skip audio decoding.
+  connect `images` to an IMAGE input. Set `start_time` and `duration` in seconds to
+  pick a clip; `frame_load_cap` (121 by default, 0 for all) keeps long videos from
+  filling RAM. The node shows what will load before you run it, and the muted preview
+  loops over exactly that clip. A format preset trims the frame count to a model's
+  rule and sets its frame rate. Connect `audio` downstream to keep the clip's
+  soundtrack, or disable `load_audio` to skip audio decoding.
 - **Liquify:** load an image, or connect IMAGE and Queue once to see its preview.
   Drag to warp, use Undo/Redo, then Queue to render at the source resolution.
   Try the [Liquify example](examples/liquify.json).

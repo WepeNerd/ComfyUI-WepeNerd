@@ -71,6 +71,8 @@ def load_presets(path=PRESETS_PATH):
             "frames": frames,
             "labels": [make_label(f) for f in frames],
             "default": make_label(default),
+            # Load Video trims to this rule, which (unlike the list) is not cut off at min/max.
+            "rule": None if "frames" in cfg else (int(cfg["step"]), int(cfg.get("offset", 0))),
         }
     if not presets:
         raise ValueError(f"No usable presets in {path}.")
@@ -150,7 +152,9 @@ def register_frame_number_routes():
     @instance.routes.get("/wepenerd/frame_number/presets")
     async def frame_number_presets(_request):
         try:
-            data = {name: {"labels": p["labels"], "default": p["default"]}
+            data = {name: {"labels": p["labels"], "default": p["default"], "fps": p["fps"],
+                           "rule": p["rule"], "min": p["frames"][0], "max": p["frames"][-1],
+                           **({} if p["rule"] else {"frames": p["frames"]})}
                     for name, p in load_presets().items()}
         except (OSError, ValueError) as error:
             return web.json_response({"error": str(error)}, status=500)

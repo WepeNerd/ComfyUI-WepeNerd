@@ -5,6 +5,22 @@
 - Zoom Crop: replace the position dropdown with a one-click 5×5 picker that previews
   the kept area, supports click-and-drag, hover preview and arrow keys, and never
   opens the 25-item list. Saved workflows keep their position.
+- Load Video: add `start_time` and `duration` (in seconds). A late start jumps to the
+  nearest keyframe instead of decoding everything before it.
+- Load Video: `frame_load_cap` now defaults to 121 so a long video doesn't load whole by
+  accident. The preview loops over just the clip that will load and follows changes
+  to the cap, start, duration and other settings.
+- Load Video: show the source and the clip that will load (frames, FPS, length, start,
+  RAM) on the node before running, with a note when nothing would load or a preset's
+  range is exceeded.
+- Load Video: format presets now come from `frame_number_presets.json`, shared with
+  Frame Number Selector; picking one sets the model's frame rate. Old format names in
+  saved workflows map to the matching preset. Adds a Cosmos 1.0 preset to both nodes.
+- Load Video: add `mask` (transparency, for WebM/MOV/GIF with alpha), `width`, `height`
+  and `source_fps` outputs after the existing ones.
+- Load Video: remove `custom_width` and `custom_height`; resize with a separate node.
+  Presets no longer change the image size. Saved workflows keep their other settings.
+- Load Video: list input videos faster (no per-file stat on Windows, brief cache).
 - Add Frame Number Selector: a preset-filtered dropdown of legal frame counts for LTX
   (8n+1), MiniMax H3 (17n+5), Wan and Hunyuan (4n+1) and Mochi (6n+1), outputting
   `frames`, `fps` and `seconds`. Presets are editable in `frame_number_presets.json`.
