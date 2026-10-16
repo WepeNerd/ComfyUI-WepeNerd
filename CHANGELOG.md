@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add Save Video: a streamlined take on VHS Video Combine. Saves MP4 (H.264, H.265
+  10-bit, AV1 10-bit), WebM VP9, MOV ProRes, MKV FFV1 16-bit lossless, GIF or WebP
+  with PyAV in one pass: audio is muxed into the same file and trimmed to the video,
+  no first-frame PNG or `-audio` duplicate is written, and the workflow is embedded
+  so the file loads back into ComfyUI. Transparency comes from a `mask` input (the
+  Load Video/Load Image convention) or a fourth image channel. Outputs `filepath`.
 - Zoom Crop: replace the position dropdown with a one-click 5×5 picker that previews
   the kept area, supports click-and-drag, hover preview and arrow keys, and never
   opens the 25-item list. Saved workflows keep their position.

@@ -6,6 +6,7 @@ from .slider_node import WN_Slider
 from .resize_megapixels_node import WN_ResizeMegapixels
 from .zoom_crop_node import WN_ZoomCrop
 from .load_video_node import WN_LoadVideo, register_load_video_routes
+from .save_video_node import WN_SaveVideo
 from .speedpaint_node import WN_Speedpaint
 from .liquify_node import WN_LiquifyImage
 from .paint_mask_node import WN_PaintMask
@@ -30,6 +31,7 @@ NODE_CLASS_MAPPINGS = {
     'WN_ResizeMegapixels': WN_ResizeMegapixels,
     'WN_ZoomCrop': WN_ZoomCrop,
     'WN_LoadVideo': WN_LoadVideo,
+    'WN_SaveVideo': WN_SaveVideo,
     'WN_Speedpaint': WN_Speedpaint,
     'WN_LiquifyImage': WN_LiquifyImage,
     'WN_PaintMask': WN_PaintMask,
@@ -44,6 +46,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "WN_ResizeMegapixels": "Resize Image Megapixels (WepeNerd)",
     "WN_ZoomCrop": "Zoom Crop (WepeNerd)",
     "WN_LoadVideo": "Load Video (Upload) (WepeNerd)",
+    "WN_SaveVideo": "Save Video (WepeNerd)",
     "WN_Speedpaint": "Speedpaint",
     "WN_LiquifyImage": "Liquify Image (WepeNerd)",
     "WN_PaintMask": "Paint Mask (WepeNerd)",

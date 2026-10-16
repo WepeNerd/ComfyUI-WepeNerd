@@ -9,6 +9,7 @@ Resolution tools, painting and image warping, and spatial LoRA masks for ComfyUI
 | **Resize Image Megapixels** | Resize an image batch to a target area without cropping |
 | **Zoom Crop** | Remove width/height pixels and pick the kept area with a one-click 5×5 picker |
 | **Load Video (Upload)** | Load a clip by start time, duration and frame cap into an IMAGE batch, with audio, transparency mask, model frame presets, a readout of what will load, and a preview that loops the clip |
+| **Save Video** | Save an IMAGE batch as MP4 (H.264, H.265, AV1), WebM, ProRes, lossless FFV1, GIF or WebP in one pass, with audio, transparency and the workflow embedded; no FFmpeg executable needed |
 | **Duration Selector** | Pick a clip length that is legal for LTX, MiniMax H3, Wan, Hunyuan, Cosmos or Mochi, as frames or seconds kept in sync |
 | **Speedpaint** | Sketch from a blank canvas or imported image and output an IMAGE |
 | **Paint Mask** | Paint a MASK over an uploaded or connected image and pass the IMAGE downstream |
@@ -61,6 +62,10 @@ workflow.
   loops over exactly that clip. A format preset trims the frame count to a model's
   rule and sets its frame rate. Connect `audio` downstream to keep the clip's
   soundtrack, or disable `load_audio` to skip audio decoding.
+- **Save Video:** connect `images` (and `audio`/`mask` if you have them) to
+  **WepeNerd/Video › Save Video**. MP4 · H.264 plays everywhere; pick WebM, ProRes,
+  FFV1, GIF or WebP when you need transparency. Drop the saved file onto the canvas
+  to reload its workflow.
 - **Liquify:** load an image, or connect IMAGE and Queue once to see its preview.
   Drag to warp, use Undo/Redo, then Queue to render at the source resolution.
   Try the [Liquify example](examples/liquify.json).

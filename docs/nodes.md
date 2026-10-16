@@ -149,6 +149,62 @@ full output (about 24 MiB per 1080p frame); use a cap or smaller dimensions.
 
 ---
 
+## Save Video
+
+Saves an IMAGE batch as one file in a single pass with PyAV (the same library Load
+Video and ComfyUI's own video nodes use); no FFmpeg executable, gifski, or format
+files are needed. Find it under **WepeNerd/Video**.
+
+| Input | Description |
+|---|---|
+| `images` | Frames to save. A fourth channel is used as transparency. |
+| `fps` | Frame rate. 23.976, 29.97 and 59.94 are written as the exact NTSC rates (24000/1001, …). |
+| `filename_prefix` | Name prefix; may include subfolders and `%date:…%` tokens. Files are numbered `name_00001_.mp4`, like ComfyUI's own savers. |
+| `format` | See the table below. Formats whose encoder your PyAV build lacks are hidden. |
+| `crf` | Quality, lower is better (default 19). 0 is lossless for AV1, VP9 and WebP. H.264/H.265 cap at 51. WebP uses quality `100 − crf`. Ignored by ProRes, FFV1 and GIF. |
+| `pingpong` | Play forwards then backwards without repeating the end frames, for a seamless loop. |
+| `save_output` | Off saves a temporary preview instead of a file in the output folder. |
+| `audio` | Optional. Muxed into the same file, trimmed to the video's length (shorter audio just ends). |
+| `mask` | Optional transparency, 1 = transparent, as Load Image and Load Video output it. One mask for all frames or one per frame. Load Video's 64×64 empty placeholder (opaque source) is ignored. |
+
+| Format | Notes |
+|---|---|
+| MP4 · H.264 | Default; plays everywhere. 8-bit 4:2:0, AAC audio. |
+| MP4 · H.265 10-bit | Smaller files; tagged `hvc1` so QuickTime and Safari play it. |
+| MP4 · AV1 10-bit | Smallest files (SVT-AV1, preset 8). |
+| WebM · VP9 | Keeps transparency (plays with alpha in Chrome and Firefox). Opus audio. |
+| MOV · ProRes | 422 HQ, or 4444 when there is transparency. For editing software; browsers may not preview it. PCM audio. |
+| MKV · FFV1 16-bit lossless | Archive/intermediate: 16-bit RGB(A) straight from the float frames, bit-exact at 16 bits. FLAC audio. Browsers don't preview it. |
+| GIF | One global palette with dithering, built in a single pass. Transparency is on/off at 50%. No audio or metadata. |
+| WebP | Animated, lossless at `crf` 0. No audio. |
+
+All formats loop forever where looping applies (GIF, WebP). YUV formats are tagged
+BT.709 (primaries, matrix and transfer), which players and video sites assume, so
+colours match ComfyUI's preview. 4:2:0 and 4:2:2 formats need even sizes; an odd
+width or height gets one repeated edge row or column, with a warning in the console.
+Frames are converted on the batch's device a block at a time, rounded rather than
+truncated, and 10/16-bit formats receive 16-bit RGB so gradients don't band.
+
+The prompt and workflow are embedded in MP4, MOV, MKV and WebM tags and in WebP
+EXIF (as ComfyUI's Save Animated WEBP does), so dropping the file on the canvas
+reloads the workflow; `--disable-metadata` turns this off. If encoding fails or is
+cancelled, the partial file is deleted.
+
+The output `filepath` is the saved file's full path.
+
+### Compared with VHS Video Combine
+
+| VHS Video Combine | Save Video |
+|---|---|
+| Writes a first-frame PNG beside every video to carry the workflow. | Embeds the workflow in the video; one file. |
+| With audio, encodes the video, then remuxes a second `-audio` copy and keeps both. | Audio and video interleave in one pass; one file. |
+| Needs an FFmpeg executable (and gifski for its best GIFs); frames are piped to subprocesses, and a failed metadata write re-runs the encode. | In-process PyAV; GIF palettes are built in one pass. |
+| `vae` and `meta_batch` inputs decode and batch inside the saver. | Use VAE Decode (Tiled) upstream; the saver only saves. |
+| `loop_count` duplicates frames into videos with FFmpeg's loop filter. | Removed: players loop; GIF and WebP loop forever. |
+| Per-format widgets (`pix_fmt`, `save_metadata`, `trim_to_audio`…) from JSON templates. | One `crf`; bit depth and pixel format follow the format. |
+| Transparency only from 4-channel IMAGE tensors. | Also from a MASK, matching Load Video's `mask` output. |
+| Outputs `VHS_FILENAMES`, needing Select Filename. | Outputs the path as a STRING. |
+
 ## Duration Selector
 
 Pick a clip length your video model accepts, as frames or seconds, under
