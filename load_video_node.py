@@ -531,10 +531,16 @@ def register_load_video_routes():
 
     @instance.routes.get("/wepenerd/load_video/info")
     async def load_video_info(request):
+        video = request.query.get("video", "")
         try:
-            info = probe_video(video_path(request.query.get("video", "")))
+            info = probe_video(video_path(video))
         except (OSError, ValueError, av.error.FFmpegError) as error:
-            return web.json_response({"error": str(error)}, status=400)
+            # 404 while the file isn't there yet: a dropped file's name is set before its upload ends.
+            try:
+                missing = not Path(folder_paths.get_annotated_filepath(video)).is_file()
+            except (OSError, ValueError, TypeError):
+                missing = True
+            return web.json_response({"error": str(error)}, status=404 if missing else 400)
         return web.json_response(info)
 
     instance._wn_load_video_routes_registered = True

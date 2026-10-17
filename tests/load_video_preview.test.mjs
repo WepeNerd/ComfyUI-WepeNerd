@@ -7,9 +7,12 @@ import * as helpers from "../js/load_video.mjs";
 const INFO = { width: 64, height: 32, fps: 10, duration: 10, frames: 100, frames_exact: true, audio: false, alpha: false };
 const PRESETS = { "MiniMax H3 (17n+5, 24 fps)": { fps: 24, rule: [17, 5], min: 5, max: 362 } };
 
-function setup() {
+// infoStatuses: HTTP statuses for successive info requests (the last one repeats); 200 returns INFO.
+function setup({ infoStatuses = [200] } = {}) {
     const observers = [];
     const requests = [];
+    const timers = [];
+    let infoCalls = 0;
     let extension;
     const context = vm.createContext({
         ...helpers,
@@ -17,8 +20,10 @@ function setup() {
         api: {
             fetchApi(url) {
                 requests.push(url);
-                const body = url.includes("frame_number") ? PRESETS : INFO;
-                return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+                if (url.includes("frame_number")) return Promise.resolve({ ok: true, json: () => Promise.resolve(PRESETS) });
+                const status = infoStatuses[Math.min(infoCalls++, infoStatuses.length - 1)];
+                const body = status === 200 ? INFO : { error: "Video file not found or unsupported: clip.mp4" };
+                return Promise.resolve({ ok: status === 200, status, json: () => Promise.resolve(body) });
             },
         },
         MutationObserver: class {
@@ -28,7 +33,8 @@ function setup() {
         },
         requestAnimationFrame: () => 1,
         cancelAnimationFrame: () => {},
-        setTimeout: (callback) => callback(),
+        setTimeout: (callback, delay) => { if (!delay) callback(); else timers.push(callback); return timers.length; },
+        clearTimeout: () => {},
         JSON,
     });
     const source = readFileSync(new URL("../js/wn_load_video.js", import.meta.url), "utf8")
@@ -56,13 +62,16 @@ function setup() {
     const node = new Node();
     node.onNodeCreated();
     const value = (name) => node.widgets.find((item) => item.name === name);
-    return { node, observers, extension, requests, value };
+    return { node, observers, extension, requests, value, timers };
 }
 
 function player(reject = false) {
     return {
         isConnected: true, plays: 0, pauses: 0, paused: true, currentTime: 0, duration: 10,
-        addEventListener() {}, removeEventListener() {},
+        listeners: {},
+        addEventListener(type, handler) { (this.listeners[type] ??= []).push(handler); },
+        removeEventListener() {},
+        emit(type) { for (const handler of this.listeners[type] ?? []) handler(); },
         play() { this.plays++; return reject ? Promise.reject(new Error("blocked")) : Promise.resolve(); },
         pause() { this.pauses++; },
     };
@@ -142,6 +151,41 @@ test("shows what will load and loops the preview over the capped clip", async ()
     media.currentTime = 7;
     assert.match(draw(node)[1], /30 frames · 10 fps · 3 s · from 2 s/);
     assert.equal(media.currentTime, 2);
+});
+
+test("a dropped video still uploading is retried instead of shown as missing", async () => {
+    const { node, requests, timers } = setup({ infoStatuses: [404, 404, 200] });
+    draw(node);
+    await flush();
+    assert.deepEqual(draw(node), ["Reading video…"]);
+    timers.shift()();
+    await flush();
+    assert.deepEqual(draw(node), ["Reading video…"]);
+    timers.shift()();
+    await flush();
+    assert.match(draw(node)[1], /100 frames/);
+    assert.equal(requests.filter((url) => url.includes("load_video/info")).length, 3);
+});
+
+test("a file that stays missing shows the error after the retries", async () => {
+    const { node, timers } = setup({ infoStatuses: [404] });
+    draw(node);
+    await flush();
+    while (timers.length) { timers.shift()(); await flush(); }
+    assert.match(draw(node).join(" "), /Video file not found/);
+});
+
+test("the preview finishing loading reads the file again", async () => {
+    const { node, requests } = setup({ infoStatuses: [400, 200] });
+    const media = player();
+    node.addDOMWidget("video-preview", "video", { querySelectorAll: () => [media] }, {});
+    draw(node);
+    await flush();
+    assert.match(draw(node).join(" "), /not found/);
+    media.emit("loadeddata");
+    await flush();
+    assert.match(draw(node)[1], /100 frames/);
+    assert.equal(requests.filter((url) => url.includes("load_video/info")).length, 2);
 });
 
 test("picking a format sets its frame rate; loading a saved workflow does not", async () => {

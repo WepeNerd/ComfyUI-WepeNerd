@@ -31,7 +31,7 @@ function settingsOf(node, presets) {
 }
 
 // Autoplay the source preview muted, and loop it over the clip the current settings load.
-function enhancePreview(node, looper) {
+function enhancePreview(node, looper, onLoaded) {
     const observers = new Map();
     const players = new Set();
     function watch(container) {
@@ -54,6 +54,7 @@ function enhancePreview(node, looper) {
                 player.playsInline = true;
                 player.controls = true;
                 looper.attach(player);
+                player.addEventListener?.("loadeddata", () => onLoaded?.());
                 player.play().catch(() => { /* Playback controls remain available if autoplay is blocked. */ });
             }
         };
@@ -95,7 +96,7 @@ function enhancePreview(node, looper) {
 
 function installInfo(node) {
     const looper = new ClipLooper();
-    const state = { key: null, video: null, info: null, presets: {}, lines: null };
+    const state = { key: null, video: null, info: null, presets: {}, lines: null, request: 0, retry: null };
     loadPresets().then((presets) => {
         state.presets = presets;
         state.key = null;
@@ -107,22 +108,41 @@ function installInfo(node) {
         return preset ? { rule: preset.rule, frames: preset.frames, min: preset.min, max: preset.max } : null;
     };
 
-    function fetchInfo(video) {
+    // Retry delays (ms) while the server doesn't have the file yet. Dropping a video on the node sets
+    // its name as the upload starts, so the first request can arrive before the file does.
+    const RETRIES = [300, 600, 1000, 1500, 2000, 3000, 5000, 8000];
+
+    function fetchInfo(video, attempt = 0, keep = false) {
+        const request = ++state.request;
         state.video = video;
-        state.info = null;
+        if (attempt === 0 && !keep) state.info = null;
+        clearTimeout(state.retry);
         if (!video) return;
         api.fetchApi(`/wepenerd/load_video/info?video=${encodeURIComponent(video)}`)
             .then(async (response) => {
                 const data = await response.json().catch(() => ({}));
-                return response.ok ? data : { error: data.error || "Couldn't read this video." };
+                if (response.ok) return data;
+                return { error: data.error || "Couldn't read this video.", missing: response.status === 404 };
             })
-            .catch(() => ({ error: "Couldn't reach ComfyUI to read this video." }))
+            .catch(() => ({ error: "Couldn't reach ComfyUI to read this video.", missing: true }))
             .then((info) => {
-                if (state.video !== video) return;
+                if (state.video !== video || state.request !== request) return;
+                if (info.missing && attempt < RETRIES.length) {
+                    // Still "Reading video…": try again shortly instead of showing an error.
+                    state.retry = setTimeout(() => fetchInfo(video, attempt + 1, keep), RETRIES[attempt]);
+                    return;
+                }
                 state.info = info;
                 state.key = null;
                 node.setDirtyCanvas?.(true, false);
             });
+    }
+
+    // The preview finished loading a file from the server, so it exists now. Read it again (keeping
+    // the current readout meanwhile) in case an earlier attempt failed or the file was replaced
+    // under the same name. The server caches the answer, so this is cheap.
+    function previewLoaded() {
+        if (state.video) fetchInfo(state.video, 0, Boolean(state.info && !state.info.error));
     }
 
     // Recompute whenever a watched value changes, however it changed (typing, loading a workflow,
@@ -192,7 +212,7 @@ function installInfo(node) {
             return result;
         };
     }
-    enhancePreview(node, looper);
+    enhancePreview(node, looper, previewLoaded);
     return { refresh: () => { state.key = null; } };
 }
 

@@ -8,6 +8,9 @@
   no first-frame PNG or `-audio` duplicate is written, and the workflow is embedded
   so the file loads back into ComfyUI. Transparency comes from a `mask` input (the
   Load Video/Load Image convention) or a fourth image channel. Outputs `filepath`.
+- Load Video: fix "Video file not found or unsupported" sometimes showing after dragging
+  a video onto the node. The node asked about the file before its upload finished; it
+  now waits and asks again, and re-reads the file once the preview has loaded.
 - Load Video: the readout and looping preview follow connected inputs. Driving
   `frame_load_cap`, `frame_rate` or `duration` from Duration Selector (or a primitive,
   also through reroutes and KJNodes Get/Set nodes) updates them live as you change
