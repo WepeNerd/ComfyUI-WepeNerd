@@ -3,9 +3,10 @@
 // planClip and largestValid mirror plan_clip and largest_valid in load_video_node.py; the
 // shared cases in tests/load_video_plans.json keep the two in step.
 
-export const VALUES_MARKER = "wn_load_video_v2";
-export const WATCHED = ["video", "start_time", "duration", "frame_load_cap", "frame_rate",
-    "skip_first_frames", "select_every_nth", "format"];
+// Saved with every node, so a workflow saved with an earlier layout of the settings can be told apart.
+export const VALUES_MARKER = "wn_load_video_v3";
+export const V2_MARKER = "wn_load_video_v2";
+export const WATCHED = ["video", "frame_load_cap", "frame_rate", "skip_first_frames", "select_every_nth", "format"];
 
 // Format names from before the presets were shared with Duration Selector.
 export const LEGACY_FORMATS = {
@@ -33,42 +34,26 @@ export function largestValid(count, preset) {
 }
 
 export function planClip(info, settings, preset = null) {
-    const { start_time: start = 0, duration = 0, frame_rate: frameRate = 0, skip_first_frames: skip = 0,
-        select_every_nth: nth = 1, frame_load_cap: frameCap = 0 } = settings;
-    const sourceFps = info.fps;
-    const rate = frameRate || sourceFps;
-    const remaining = Math.max(0, info.duration - start);
-    let available, origin, window = null;
-    if (frameRate) {
-        available = Math.floor(remaining * frameRate + 0.5);
-        origin = start;
-        if (duration) window = Math.max(1, Math.ceil(duration * frameRate - 0.5 - 1e-9));
-    } else {
-        const first = Math.ceil(start * sourceFps - 0.5 - 1e-9);
-        available = info.frames - first;
-        origin = first / sourceFps;
-        if (duration) window = Math.max(1, Math.ceil((start + duration) * sourceFps - 0.5 - 1e-9) - first);
-    }
-    available = Math.max(0, available);
-    let limit = window === null || window > available ? "end" : "duration";
-    if (limit === "duration") available = window;
+    const { frame_rate: frameRate = 0, skip_first_frames: skip = 0, select_every_nth: nth = 1,
+        frame_load_cap: frameCap = 0 } = settings;
+    const rate = frameRate || info.fps;
+    const available = Math.max(0, frameRate ? Math.floor(info.duration * frameRate + 0.5) : info.frames);
+    let fromEnd = true;
     let selected = Math.max(0, Math.ceil((available - skip) / nth));
     const cap = frameCap ? largestValid(frameCap, preset) : 0;
     if (frameCap && !cap) {
         selected = 0;
-        limit = "cap";
+        fromEnd = false;
     } else if (cap && cap <= selected) {
-        if (!(limit === "end" && available - skip < (cap + 1) * nth)) limit = "cap";
+        fromEnd = available - skip < (cap + 1) * nth;
         selected = cap;
     }
-    const uneven = !frameRate && Boolean(info.variable || !info.frames_exact);
-    const estimate = limit === "end" || (limit === "duration" && uneven);
     const count = largestValid(selected, preset);
     const outputRate = rate / nth;
-    const clipStart = origin + skip / rate;
+    const clipStart = skip / rate;
     const seconds = count / outputRate;
     return { count, frame_rate: outputRate, seconds, clip_start: clipStart,
-        clip_end: clipStart + seconds, estimate };
+        clip_end: clipStart + seconds, estimate: fromEnd };
 }
 
 // Map a saved format value onto the current list (old short names, or a renamed preset).
@@ -78,9 +63,9 @@ export function resolveFormatName(value, names) {
     return mapped && names.includes(mapped) ? mapped : value;
 }
 
-// Workflows saved before this update stored widgets by position: video, frame_rate,
-// frame_load_cap, skip_first_frames, select_every_nth, format, custom_width, custom_height,
-// load_audio. Returns their values by name, or null if the array doesn't look like that.
+// Workflows saved before the settings were reorganised stored widgets by position. The first layout
+// was video, frame_rate, frame_load_cap, skip_first_frames, select_every_nth, format, custom_width,
+// custom_height, load_audio. Returns the values by name, or null if the array doesn't look like that.
 export function migrateLegacyValues(values) {
     if (!Array.isArray(values)) return null;
     for (let i = 5; i + 3 < values.length; i++) {
@@ -90,10 +75,38 @@ export function migrateLegacyValues(values) {
         const numbers = values.slice(i - 4, i);
         if (!numbers.every((v) => typeof v === "number")) continue;
         const [frameRate, cap, skip, nth] = numbers;
-        return { video: values[i - 5], start_time: 0, duration: 0, frame_load_cap: cap, frame_rate: frameRate,
+        return { video: values[i - 5], frame_load_cap: cap, frame_rate: frameRate,
             skip_first_frames: skip, select_every_nth: nth, format: values[i], load_audio: audio };
     }
     return null;
+}
+
+// The second layout (marked V2_MARKER) was video, start_time, duration, frame_load_cap, frame_rate,
+// skip_first_frames, select_every_nth, format, load_audio. start_time and duration are returned
+// too; windowToFrames turns them into skip_first_frames and frame_load_cap.
+export function migrateV2Values(values) {
+    if (!Array.isArray(values)) return null;
+    for (let i = 0; i + 8 < values.length; i++) {
+        const row = values.slice(i, i + 9);
+        if (typeof row[0] !== "string" || !row.slice(1, 7).every((v) => typeof v === "number")
+            || typeof row[7] !== "string" || typeof row[8] !== "boolean") continue;
+        const [video, start, duration, cap, frameRate, skip, nth, format, audio] = row;
+        return { video, start_time: start, duration, frame_load_cap: cap, frame_rate: frameRate,
+            skip_first_frames: skip, select_every_nth: nth, format, load_audio: audio };
+    }
+    return null;
+}
+
+// The old start_time/duration window as skip and cap, at fps (the frame rate setting, or the
+// source's): the old order was start, duration, skip, every nth, cap.
+export function windowToFrames({ start_time: start = 0, duration = 0, frame_load_cap: cap = 0,
+    skip_first_frames: skip = 0, select_every_nth: nth = 1 }, fps) {
+    const result = { skip_first_frames: skip + Math.round(start * fps), frame_load_cap: cap };
+    if (duration > 0) {
+        const selected = Math.max(1, Math.ceil((Math.round(duration * fps) - skip) / Math.max(1, nth)));
+        result.frame_load_cap = cap ? Math.min(cap, selected) : selected;
+    }
+    return result;
 }
 
 const trim = (value, digits = 2) => String(Number(value.toFixed(digits)));
@@ -124,18 +137,15 @@ export function describe(info, settings, preset, formatName = "None") {
         `${info.frames_exact ? "" : "≈"}${info.frames} frames`];
     if (info.audio) source.push("audio");
     if (info.alpha) source.push("alpha");
-    const unresolved = settings.unresolved ?? [];
-    if (unresolved.length) {
-        return { source: `Source  ${source.join(" · ")}`, output: "Loads  (worked out when the workflow runs)",
-            note: `Connected ${unresolved.join(", ")} has no value until the workflow runs.`, warn: false, plan: null };
-    }
     const plan = planClip(info, settings, preset);
-    const approx = plan.estimate ? "≈" : "";
+    // Connected settings whose value the browser can't read use the setting's current value.
+    const guessed = settings.approximate ?? [];
+    const approx = plan.estimate || guessed.length ? "≈" : "";
     let note = "", warn = false;
     if (!plan.count) {
         warn = true;
         const empty = planClip(info, settings, null).count === 0;
-        note = empty ? "Nothing to load: the start is past the end of the video."
+        note = empty ? "Nothing to load: skip_first_frames is past the end of the video."
             : `Too few frames for ${formatName}. Select more frames or use None.`;
         return { source: `Source  ${source.join(" · ")}`, output: "Loads nothing", note, warn, plan };
     }
@@ -145,9 +155,12 @@ export function describe(info, settings, preset, formatName = "None") {
     if (preset && preset.min && (plan.count < preset.min || plan.count > preset.max)) {
         warn = true;
         note = `${plan.count} frames is outside this preset's range (${preset.min}–${preset.max}).`;
-    } else if (!settings.frame_load_cap && !settings.duration && bytes > 8 * 1024 ** 3) {
+    } else if (!settings.frame_load_cap && bytes > 8 * 1024 ** 3) {
         warn = true;
         note = `No cap: the whole video needs ${formatBytes(bytes)} of RAM.`;
+    } else if (guessed.length) {
+        const values = guessed.map((name) => `${name} ${settings[name]}`).join(", ");
+        note = `Connected ${guessed.join(", ")} is only known when the workflow runs; using ${values}.`;
     }
     return { source: `Source  ${source.join(" · ")}`, output: `Loads  ${output.join(" · ")}`, note, warn, plan };
 }
@@ -244,8 +257,8 @@ export class ClipLooper {
     }
 }
 
-// Values a connected input will receive, read from the node it is connected to (through reroutes
-// and KJNodes Get/Set pairs), so the readout
+// Values a connected input will receive, read from the node it is connected to (through reroutes,
+// Number Convert and KJNodes Get/Set pairs), so the readout
 // and preview can follow another node (such as Duration Selector) before the workflow runs.
 // Returns { linked: false } for a plain widget, { linked: true, value } when the source node's
 // value can be read in the browser, and { linked: true, unknown: true } when it is only known at
@@ -283,6 +296,19 @@ function sourceValue(graph, node, slot, presets, depth) {
         return sourceValue(graph, graph.getNodeById?.(link.origin_id), link.origin_slot, presets, depth + 1);
     }
     const widget = (name) => node.widgets?.find((item) => item.name === name);
+    if (type === "ComfyNumberConvert") {
+        // Core Number Convert: FLOAT keeps the value, INT truncates it (Python's int()).
+        const input = inputFor(node, "value");
+        const link = linkById(graph, input?.link);
+        const source = link
+            ? sourceValue(graph, graph.getNodeById?.(link.origin_id), link.origin_slot, presets, depth + 1)
+            : widget("value") ? { value: widget("value").value } : { unknown: true };
+        if (source.unknown) return source;
+        const number = typeof source.value === "boolean" ? Number(source.value) : Number(source.value);
+        if (!Number.isFinite(number)) return { unknown: true };
+        const kind = node.outputs?.[slot]?.type ?? node.outputs?.[slot]?.name;
+        return { value: kind === "INT" ? Math.trunc(number) : number };
+    }
     if (type === DURATION_SELECTOR) {
         const frames = Number.parseInt(String(widget("frames")?.value), 10);
         const fps = presets?.[widget("preset")?.value]?.fps;
@@ -292,17 +318,16 @@ function sourceValue(graph, node, slot, presets, depth) {
         if (slot === 2 && Number.isFinite(frames)) return { value: frames / fps };
         return { unknown: true };
     }
-    // A node that just passes on one of its widgets: an output named after the widget, or a
-    // single-output primitive whose only widget is the value (PrimitiveNode, Int, Float, ...).
+    // A node that just passes on one of its widgets: an output named after the widget, or a primitive
+    // (PrimitiveNode, Int, Float, ...) whose value is its "value" widget or, failing that, its first one.
+    // Primitives also carry a control widget (fixed/increment/...), whose name differs between versions.
     const output = node.outputs?.[slot];
     const passThrough = (item) => item && !inputFor(node, item.name)?.link;
     const named = widget(output?.name);
     if (passThrough(named)) return { value: named.value };
-    const values = (node.widgets ?? []).filter((item) => item.type !== "button" && item.name !== "control_after_generate"
-        && item.name !== "control_before_generate");
-    if ((node.outputs?.length ?? 0) === 1 && values.length === 1 && passThrough(values[0])
-        && (type === "PrimitiveNode" || /^Primitive/.test(type ?? "") || node.isVirtualNode)) {
-        return { value: values[0].value };
+    if (type === "PrimitiveNode" || /^Primitive/.test(type ?? "")) {
+        const value = widget("value") ?? node.widgets?.find((item) => item.type !== "button");
+        if (passThrough(value)) return { value: value.value };
     }
     return { unknown: true };
 }

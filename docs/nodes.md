@@ -30,49 +30,50 @@ batch with a separate node.
 | Input | Description |
 |---|---|
 | `video` | Upload/select a video. GIF files can also be placed in the input folder and selected. |
-| `start_time` | Seconds into the video to start. The decoder jumps to the keyframe before it instead of decoding everything earlier, so late starts in long videos load fast. |
-| `duration` | Seconds to load from `start_time`; 0 loads to the end. |
 | `frame_load_cap` | Maximum frames to load; default 121 so a long video can't fill your RAM by accident. 0 loads all. |
 | `frame_rate` | 0 keeps source frames. A positive FPS samples the video timeline, dropping or repeating frames without interpolation. |
-| `skip_first_frames` | Frames skipped after `start_time` and rate conversion. |
+| `skip_first_frames` | Frames skipped (after rate conversion) before the clip starts. A large skip jumps to the keyframe before it instead of decoding every skipped frame, so clips from late in long videos load fast. |
 | `select_every_nth` | Keep every nth frame after skipping; 1 keeps all. |
 | `format` | A video model's frame-count rule, from the Duration Selector presets; default `None`. Picking a preset also sets `frame_rate` to the model's FPS (you can change it afterwards). |
 | `load_audio` | Enabled by default. Decode the selected clip's audio; disable for image-only workflows. |
 
 Below the settings, the node shows what will load before you run it: the source
 (size, FPS, length, frame count, audio, transparency), then the clip (frame count,
-output FPS, length, start time, and the RAM the batch needs). A note appears when
+output FPS, length, where it starts, and the RAM the batch needs). A note appears when
 nothing would load, when the count is outside the chosen preset's range, or when an
 uncapped load needs more than 8 GB. A `≈` marks counts that depend on where the file
-ends, or on variable frame timing, since container headers can be approximate.
+ends, since container headers can be approximate.
 
 Settings connected to another node follow it too. With Duration Selector's `frames`
-connected to `frame_load_cap` (or `fps` to `frame_rate`, `seconds` to `duration`),
-changing the Duration Selector updates this readout and the preview at once, before
-the workflow runs. Values from primitives, reroutes and KJNodes Get/Set pairs are read
-the same way. A value another node only works out when the workflow runs (a math node,
-say) can't be known in advance: the readout says so and the preview loops the whole
-video.
+connected to `frame_load_cap` (or `fps` to `frame_rate`), changing the Duration
+Selector updates this readout and the preview at once, before the workflow runs.
+Values from primitives, reroutes, Number Convert and KJNodes Get/Set pairs are read the
+same way. A value another node only works out when the workflow runs (a math node,
+say) can't be known in advance: the readout uses that setting's own value instead,
+marks the result `≈`, and says so in a note; the preview still follows the cap.
 
-The source-video preview autoplays muted and loops over the clip that will load:
-from its start time for as long as the output lasts. Changing `start_time`,
-`duration`, `frame_load_cap`, skip, every nth, frame rate or format moves the preview
-to the new clip's start. While paused you can scrub anywhere; playing again returns to
+The source-video preview autoplays muted and loops over the clip that will load: from
+the first kept frame for as long as the output lasts. Changing `frame_load_cap`, skip,
+every nth, frame rate or format moves the preview to the new clip's start. While paused you can scrub anywhere; playing again returns to
 the clip. Use the controls to pause or unmute. Browser codec support determines which
 files can play inline.
 
-Processing order: start time → duration → frame rate → skip → every nth → cap →
-format trimming. For example, rate 10, skip 2, nth 2, and cap 3 selects resampled
-frames 2, 4, and 6, with an output rate of 5 FPS. Without a frame rate, `start_time`
-and `duration` keep the source frames nearest to times inside the window. Positive
-rates use FFmpeg's standard FPS filter with nearest timestamp rounding, on a grid that
-starts at `start_time`; source-frame choices can differ from VHS's OpenCV loader.
+Processing order: frame rate → skip → every nth → cap → format trimming. For example,
+rate 10, skip 2, nth 2, and cap 3 selects resampled frames 2, 4, and 6, with an output
+rate of 5 FPS. Positive rates use FFmpeg's standard FPS filter with nearest timestamp
+rounding; source-frame choices can differ from VHS's OpenCV loader.
+
+Jumping ahead for a skip gives exactly the frames that decoding from the top and
+counting would. With a frame rate set it always jumps. Without one, it jumps when the
+file states its frame count and has even frame timing (typical MP4 and MOV); for
+other files (MKV, WebM, phone videos with variable timing) it counts frames from the
+top, since frame n can't be located by time.
 
 Format presets come from `frame_number_presets.json`, shared with Duration
 Selector, so a preset you add there appears in both nodes. Load Video trims to the
 preset's rule (or its explicit list) without the list's upper limit: the largest
 valid count that doesn't exceed the cap. Too few frames, a cap below the preset's
-smallest count, or a start beyond the video ends with an explanatory error. Workflows
+smallest count, or a skip beyond the video ends with an explanatory error. Workflows
 saved with the old short names (`LTXV`, `H3`, `Wan`, `Hunyuan`, `Mochi`, `Cosmos`,
 `AnimateDiff`) load with the matching preset; `AnimateDiff` only constrained size, so
 it becomes `None`. Presets no longer change the image size.
@@ -96,10 +97,13 @@ track is available.
 Long or high-resolution batches require RAM for the full output (about 24 MiB per
 1080p frame); the node's readout shows the total before you run it.
 
-Workflows saved before this version keep their settings: `custom_width` and
-`custom_height` are dropped, the new `start_time` and `duration` load as 0, and
-`frame_load_cap` keeps its saved value (including 0). API prompts written for the
-previous version still run, since every input except `video` has a default.
+Workflows saved with earlier versions keep their settings. `custom_width` and
+`custom_height` are dropped, and `frame_load_cap` keeps its saved value (including 0).
+Workflows saved while the node had `start_time` and `duration` get them converted:
+the start becomes extra `skip_first_frames` and the duration a `frame_load_cap`, at
+the frame rate setting (or the video's own). API prompts written for earlier versions
+still run, since every input except `video` has a default; `start_time`, `duration`,
+`custom_width` and `custom_height` there are ignored.
 
 ---|---|
 | `video` | Upload/select a video. GIF files can also be placed in the input folder and selected. |

@@ -120,50 +120,33 @@ def largest_valid(count, preset):
     return max((frames for frames in preset["frames"] if frames <= count), default=0)
 
 
-def plan_clip(info, start_time=0, duration=0, frame_rate=0, skip_first_frames=0,
-              select_every_nth=1, frame_load_cap=0, preset=None):
+def plan_clip(info, frame_rate=0, skip_first_frames=0, select_every_nth=1, frame_load_cap=0, preset=None):
     """Predict the output from the source's metadata without decoding (js/load_video.mjs mirrors this).
 
-    Exact for constant-frame-rate sources; ``estimate`` is True when the end of the file sets
-    the count, because file lengths and frame totals in container headers can be approximate.
+    ``estimate`` is True when the end of the file sets the count, because file lengths and frame
+    totals in container headers can be approximate. A count set by frame_load_cap is exact.
     """
-    source_fps = info["fps"]
-    rate = frame_rate or source_fps
-    remaining = max(0.0, info["duration"] - start_time)
+    rate = frame_rate or info["fps"]
     if frame_rate:
-        # Resampled frames sit on a grid that starts at start_time.
-        available = math.floor(remaining * frame_rate + 0.5)
-        origin = start_time
-        window = max(1, math.ceil(duration * frame_rate - 0.5 - 1e-9)) if duration else None
+        available = math.floor(info["duration"] * frame_rate + 0.5)
     else:
-        # Source frames are kept when they are nearest to a time inside the window.
-        first = math.ceil(start_time * source_fps - 0.5 - 1e-9)
-        available = info["frames"] - first
-        origin = first / source_fps
-        window = max(1, math.ceil((start_time + duration) * source_fps - 0.5 - 1e-9) - first) if duration else None
+        available = info["frames"]
     available = max(0, available)
-    limit = "end" if window is None or window > available else "duration"
-    if limit == "duration":
-        available = window
+    from_end = True
     selected = max(0, -(-(available - skip_first_frames) // select_every_nth))
     cap = largest_valid(frame_load_cap, preset) if frame_load_cap else 0
     if frame_load_cap and not cap:
-        selected, limit = 0, "cap"  # The cap is below the preset's smallest count: the node stops with an error.
+        selected, from_end = 0, False  # The cap is below the preset's smallest count: the node stops with an error.
     elif cap and cap <= selected:
         # A cap within a frame of an estimated end may not be reached.
-        if not (limit == "end" and available - skip_first_frames < (cap + 1) * select_every_nth):
-            limit = "cap"
+        from_end = available - skip_first_frames < (cap + 1) * select_every_nth
         selected = cap
-    # Where the file ends is read from its header, so it's approximate. A duration counts source frames by
-    # time, which is approximate too unless the frames are known to sit on an even grid.
-    uneven = not frame_rate and (info.get("variable") or not info.get("frames_exact"))
-    estimate = limit == "end" or (limit == "duration" and bool(uneven))
     count = largest_valid(selected, preset)
     output_rate = rate / select_every_nth
-    clip_start = origin + skip_first_frames / rate
+    clip_start = skip_first_frames / rate
     seconds = count / output_rate
     return {"count": count, "frame_rate": output_rate, "seconds": seconds,
-            "clip_start": clip_start, "clip_end": clip_start + seconds, "estimate": estimate}
+            "clip_start": clip_start, "clip_end": clip_start + seconds, "estimate": from_end}
 
 
 def alpha_decoder(stream):
@@ -196,7 +179,7 @@ def decoded_frames(container, stream, decoder):
 
 def frame_time(frame, source_start):
     if frame.pts is None:
-        raise ValueError("Video has no frame timestamps; start_time, duration and frame_rate need them.")
+        raise ValueError("Video has no frame timestamps; frame_rate needs them (use 0).")
     return frame.pts * frame.time_base - source_start
 
 
@@ -206,7 +189,8 @@ def seek(container, stream, decoder, seconds):
 
 
 def source_window(container, stream, decoder, start_time, source_rate, source_start):
-    """Decoded frames from start_time on, jumping to the keyframe before it instead of decoding everything earlier."""
+    """Decoded frames from start_time on (seconds after the stream's start), jumping to the keyframe
+    before it instead of decoding everything earlier."""
     tolerance = 0.5 / source_rate
     target = start_time - 2 / source_rate
     if target <= 0:
@@ -224,10 +208,15 @@ def source_window(container, stream, decoder, start_time, source_rate, source_st
     return decoded_frames(container, stream, decoder)
 
 
-def timed_frames(container, stream, decoder, frame_rate, start_time=0, duration=0, state=None):
-    """Frames of the [start_time, start_time + duration) window, resampled to frame_rate if set.
+def timed_frames(container, stream, decoder, frame_rate, start_time=0, state=None, skip_output=0, origin=None):
+    """Frames from start_time on (seconds after the stream's start), resampled to frame_rate if set.
 
-    The FPS conversion uses FFmpeg's timestamp resampler, so discarded frames are never converted to RGB.
+    load_video uses this to skip frames by seeking, keeping exactly the frames that decoding from
+    the top and skipping would keep. Native frames from start_time are frame n = start_time * fps.
+    With a frame rate, the sampling grid stays anchored at ``origin`` (the first frame's time) and
+    the first ``skip_output`` grid frames are dropped, since FFmpeg's resampler picks frames
+    relative to that grid. The FPS conversion uses FFmpeg's timestamp resampler, so discarded
+    frames are never converted to RGB.
     """
     state = {} if state is None else state
     source_rate = stream.average_rate or stream.guessed_rate
@@ -242,22 +231,14 @@ def timed_frames(container, stream, decoder, frame_rate, start_time=0, duration=
 
     if not frame_rate:
         tolerance = 0.5 / source_rate
-        windowed = start_time > 0 or duration
-        kept = 0
         for frame in frames:
             remember(frame)
-            if windowed:
-                time_ = frame_time(frame, source_start)
-                if time_ < start_time - tolerance - 1e-9:
-                    continue
-                if duration and kept and time_ >= start_time + duration - tolerance - 1e-9:
-                    return
-            kept += 1
+            if start_time > 0 and frame_time(frame, source_start) < start_time - tolerance - 1e-9:
+                continue
             yield frame
         return
 
-    window = max(1, math.ceil(duration * frame_rate - 0.5 - 1e-9)) if duration else None
-    graph, emitted = None, 0
+    graph = None
     for frame in itertools.chain(frames, (None,)):
         throw_exception_if_processing_interrupted()
         if frame is not None:
@@ -268,13 +249,12 @@ def timed_frames(container, stream, decoder, frame_rate, start_time=0, duration=
             if frame is None:
                 return
             graph = av.filter.Graph()
-            # PTS-STARTPTS keeps the original behaviour from the top of the file; a later start is
-            # measured from the stream's own start so a seek doesn't move the sampling grid.
-            origin = "STARTPTS" if start_time <= 0 else repr(float((source_start + start_time) / frame.time_base))
+            # The grid starts at the first frame (STARTPTS), or at its known time when we have seeked.
+            offset = "STARTPTS" if origin is None else repr(float((source_start + origin) / frame.time_base))
             graph.link_nodes(
                 graph.add_buffer(width=frame.width, height=frame.height, format=frame.format,
                                  time_base=frame.time_base),
-                graph.add("setpts", f"PTS-{origin}"),
+                graph.add("setpts", f"PTS-{offset}"),
                 graph.add("fps", f"fps={Fraction(str(frame_rate))}:start_time=0:round=near"),
                 graph.add("buffersink"),
             )
@@ -286,10 +266,9 @@ def timed_frames(container, stream, decoder, frame_rate, start_time=0, duration=
                 output = graph.pull()
             except (av.error.BlockingIOError, av.error.EOFError):
                 break
+            if skip_output and (output.pts is None or output.pts < skip_output):
+                continue
             yield output
-            emitted += 1
-            if window is not None and emitted >= window:
-                return
 
 
 def probe_video(path):
@@ -319,8 +298,10 @@ def probe_video(path):
             seconds = frames / rate
         decoder = alpha_decoder(stream)
         first = next(decoded_frames(container, stream, decoder), None)
-        width, height, rotation, alpha = stream.width, stream.height, 0, False
+        width, height, rotation, alpha, first_time = stream.width, stream.height, 0, False, None
         if first is not None:
+            if first.pts is not None:
+                first_time = float(first.pts * first.time_base - (stream.start_time or 0) * stream.time_base)
             width, height, rotation = first.width, first.height, first.rotation
             # GIF and some MOV codecs always decode with an alpha channel; report it only if it is used.
             alpha = has_alpha(first) and bool((first.to_ndarray(format="rgba")[..., 3] < 255).any())
@@ -330,7 +311,7 @@ def probe_video(path):
                 "duration": seconds, "frames": int(frames), "frames_exact": bool(stream.frames),
                 # A real frame rate that differs from the average means variable frame timing.
                 "variable": bool(stream.guessed_rate and abs(float(stream.guessed_rate) - float(rate)) > float(rate) / 1000),
-                "audio": bool(container.streams.audio), "alpha": alpha}
+                "audio": bool(container.streams.audio), "alpha": alpha, "first_time": first_time}
     if len(_info_cache) > 64:
         _info_cache.clear()
     _info_cache[key] = info
@@ -379,9 +360,9 @@ class WN_LoadVideo:
         "Transparency as a mask (1 = transparent, like Load Image). A 64x64 empty mask if the video is opaque.",
     )
     DESCRIPTION = (
-        "Load a video as RGB images. Order: start time, duration, frame rate, skip, every nth, cap, "
-        "format trimming. Format presets (shared with Duration Selector) trim the frame count "
-        "to a model's rule. The node shows what will load before you run it."
+        "Load a video as RGB images. Order: frame rate, skip, every nth, cap, format trimming. "
+        "Format presets (shared with Duration Selector) trim the frame count to a model's rule. "
+        "The node shows what will load before you run it, and the preview loops that clip."
     )
 
     @classmethod
@@ -391,14 +372,6 @@ class WN_LoadVideo:
         return {"required": {
             "video": (list_videos(folder_paths.get_input_directory()), {"video_upload": True}),
         }, "optional": {
-            "start_time": ("FLOAT", {
-                "default": 0, "min": 0, "max": 1e7, "step": 0.01,
-                "tooltip": "Seconds into the video to start. Jumps straight there, so late starts in long videos load fast.",
-            }),
-            "duration": ("FLOAT", {
-                "default": 0, "min": 0, "max": 1e7, "step": 0.01,
-                "tooltip": "Seconds to load from start_time. 0 loads to the end (frame_load_cap still applies).",
-            }),
             "frame_load_cap": ("INT", {
                 "default": DEFAULT_FRAME_CAP, "min": 0, "max": 2147483647,
                 "tooltip": "Maximum frames to load, so long videos don't fill your RAM. 0 loads all.",
@@ -409,7 +382,7 @@ class WN_LoadVideo:
             }),
             "skip_first_frames": ("INT", {
                 "default": 0, "min": 0, "max": 2147483647,
-                "tooltip": "Skip this many frames after start_time and frame-rate conversion, before selecting every nth frame.",
+                "tooltip": "Skip this many frames (after frame-rate conversion) before selecting every nth frame. Large skips jump straight there.",
             }),
             "select_every_nth": ("INT", {
                 "default": 1, "min": 1, "max": 2147483647,
@@ -439,12 +412,11 @@ class WN_LoadVideo:
         stat = path.stat()
         return (str(path), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
 
-    def load_video(self, video, start_time=0, duration=0, frame_load_cap=DEFAULT_FRAME_CAP, frame_rate=0,
-                   skip_first_frames=0, select_every_nth=1, format="None", load_audio=True):
+    def load_video(self, video, frame_load_cap=DEFAULT_FRAME_CAP, frame_rate=0, skip_first_frames=0,
+                   select_every_nth=1, format="None", load_audio=True):
         path = video_path(video)
-        for name, value in (("Frame rate", frame_rate), ("Start time", start_time), ("Duration", duration)):
-            if not math.isfinite(value) or value < 0:
-                raise ValueError(f"{name} must be finite and nonnegative.")
+        if not math.isfinite(frame_rate) or frame_rate < 0:
+            raise ValueError("Frame rate must be finite and nonnegative.")
         if min(frame_load_cap, skip_first_frames) < 0 or select_every_nth < 1:
             raise ValueError("Cap and skip must be nonnegative; every nth must be at least 1.")
         preset = resolve_format(format)
@@ -453,6 +425,10 @@ class WN_LoadVideo:
             cap = largest_valid(cap, preset)
             if cap <= 0:
                 raise ValueError(f"{format} needs a larger frame_load_cap. Increase the cap or use format None.")
+        try:
+            info = probe_video(path)
+        except (ValueError, av.error.FFmpegError):
+            info = None
 
         with av.open(str(path)) as container:
             if not container.streams.video:
@@ -462,24 +438,34 @@ class WN_LoadVideo:
             if source_rate is None or source_rate <= 0:
                 raise ValueError("Could not determine the video's frame rate.")
             source_start = (stream.start_time or 0) * stream.time_base
-            try:
-                total = plan_clip(probe_video(path), start_time, duration, frame_rate, skip_first_frames,
-                                  select_every_nth, frame_load_cap, preset)["count"]
-            except (ValueError, av.error.FFmpegError):
-                total = cap
+            total = plan_clip(info, frame_rate, skip_first_frames, select_every_nth, frame_load_cap,
+                              preset)["count"] if info else cap
+            # Skip by seeking instead of decoding every skipped frame. With a frame rate the resampling
+            # grid is known exactly. Native frame n sits at first_time + n / fps only when the timing is
+            # even, which needs an exact frame count and matching real and average rates.
+            start, skip, skip_output, origin = 0, skip_first_frames, 0, None
+            first_time = info.get("first_time") if info else None
+            if skip and first_time is not None:
+                if frame_rate:
+                    start = first_time + max(0, skip - 1) / float(Fraction(str(frame_rate)))
+                    skip_output, origin, skip = skip_first_frames, first_time, 0
+                elif info.get("frames_exact") and not info.get("variable"):
+                    start = first_time + skip / float(Fraction(str(source_rate)))
+                    skip = 0
             state = {}
             frames = itertools.islice(
-                timed_frames(container, stream, alpha_decoder(stream), frame_rate, start_time, duration, state),
-                skip_first_frames, None, select_every_nth)
+                timed_frames(container, stream, alpha_decoder(stream), frame_rate, start, state,
+                             skip_output=skip_output, origin=origin),
+                skip, None, select_every_nth)
             if cap:
                 frames = itertools.islice(frames, cap)
             first = next(frames, None)
             if first is None:
-                raise ValueError("No frames selected. Lower start_time or skip_first_frames, or choose another video.")
+                raise ValueError("No frames selected. Lower skip_first_frames or choose another video.")
             if first.pts is None:
-                audio_start = source_start + start_time + skip_first_frames / source_rate
+                audio_start = source_start + skip_first_frames / source_rate
             elif frame_rate:
-                audio_start = first.pts * first.time_base + source_start + start_time
+                audio_start = first.pts * first.time_base + source_start + (origin or 0)
             else:
                 audio_start = first.pts * first.time_base
             rotation, alpha = state["rotation"], state["alpha"]

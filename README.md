@@ -8,7 +8,7 @@ Resolution tools, painting and image warping, and spatial LoRA masks for ComfyUI
 | **Resolution Suggest** | Calculate dimensions from a target size or scale factor |
 | **Resize Image Megapixels** | Resize an image batch to a target area without cropping |
 | **Zoom Crop** | Remove width/height pixels and pick the kept area with a one-click 5×5 picker |
-| **Load Video (Upload)** | Load a clip by start time, duration and frame cap into an IMAGE batch, with audio, transparency mask, model frame presets, a readout of what will load, and a preview that loops the clip |
+| **Load Video (Upload)** | Load a clip by frame cap and skip into an IMAGE batch, with audio, transparency mask, model frame presets, a readout of what will load, and a preview that loops the clip |
 | **Save Video** | Save an IMAGE batch as MP4 (H.264, H.265, AV1), WebM, ProRes, lossless FFV1, GIF or WebP in one pass, with audio, transparency and the workflow embedded; no FFmpeg executable needed |
 | **Duration Selector** | Pick a clip length that is legal for LTX, MiniMax H3, Wan, Hunyuan, Cosmos or Mochi, as frames or seconds kept in sync |
 | **Speedpaint** | Sketch from a blank canvas or imported image and output an IMAGE |
@@ -56,9 +56,9 @@ workflow.
   dimensions. Megapixel resizing retains the whole image, with small aspect changes
   possible from rounding.
 - **Load Video (Upload):** upload/select a video under **WepeNerd/Video** and
-  connect `images` to an IMAGE input. Set `start_time` and `duration` in seconds to
-  pick a clip; `frame_load_cap` (121 by default, 0 for all) keeps long videos from
-  filling RAM. The node shows what will load before you run it, and the muted preview
+  connect `images` to an IMAGE input. Pick the clip with `skip_first_frames` and
+  `frame_load_cap` (121 by default, 0 for all, which keeps long videos from filling
+  RAM); large skips jump straight there. The node shows what will load before you run it, and the muted preview
   loops over exactly that clip. A format preset trims the frame count to a model's
   rule and sets its frame rate. Connect `audio` downstream to keep the clip's
   soundtrack, or disable `load_audio` to skip audio decoding.

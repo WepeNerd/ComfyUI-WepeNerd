@@ -11,18 +11,22 @@
 - Load Video: fix "Video file not found or unsupported" sometimes showing after dragging
   a video onto the node. The node asked about the file before its upload finished; it
   now waits and asks again, and re-reads the file once the preview has loaded.
+- Load Video: remove `start_time` and `duration`; pick the clip with
+  `skip_first_frames` and `frame_load_cap`. A large skip now jumps to the keyframe
+  before it instead of decoding every skipped frame (about 10× faster deep into a
+  long video), keeping exactly the same frames. Workflows saved with `start_time` or
+  `duration` get them converted to skip and cap.
 - Load Video: the readout and looping preview follow connected inputs. Driving
-  `frame_load_cap`, `frame_rate` or `duration` from Duration Selector (or a primitive,
-  also through reroutes and KJNodes Get/Set nodes) updates them live as you change
-  that node.
+  `frame_load_cap` or `frame_rate` from Duration Selector (or a primitive, also through
+  reroutes, Number Convert and KJNodes Get/Set nodes) updates them live as you change
+  that node. A connected value only known at run time uses the setting's own value,
+  so the preview still follows the cap instead of looping the whole video.
 - Zoom Crop: replace the position dropdown with a one-click 5×5 picker that previews
   the kept area, supports click-and-drag, hover preview and arrow keys, and never
   opens the 25-item list. Saved workflows keep their position.
-- Load Video: add `start_time` and `duration` (in seconds). A late start jumps to the
-  nearest keyframe instead of decoding everything before it.
 - Load Video: `frame_load_cap` now defaults to 121 so a long video doesn't load whole by
   accident. The preview loops over just the clip that will load and follows changes
-  to the cap, start, duration and other settings.
+  to the cap, skip and other settings.
 - Load Video: show the source and the clip that will load (frames, FPS, length, start,
   RAM) on the node before running, with a note when nothing would load or a preset's
   range is exceeded.

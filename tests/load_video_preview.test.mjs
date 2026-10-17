@@ -44,7 +44,7 @@ function setup({ infoStatuses = [200] } = {}) {
     class Node {
         constructor() {
             this.widgets = [
-                widget("video", "clip.mp4"), widget("start_time", 0), widget("duration", 0),
+                widget("video", "clip.mp4"),
                 widget("frame_load_cap", 121), widget("frame_rate", 0), widget("skip_first_frames", 0),
                 widget("select_every_nth", 1),
                 widget("format", "None", { options: { values: ["None", ...Object.keys(PRESETS)] } }),
@@ -147,10 +147,31 @@ test("shows what will load and loops the preview over the capped clip", async ()
     assert.match(lines[1], /100 frames · 10 fps · 10 s · from 0 s/);
     assert.equal(media.loop, false);
     value("frame_load_cap").value = 30;
-    value("start_time").value = 2;
+    value("skip_first_frames").value = 20;
     media.currentTime = 7;
     assert.match(draw(node)[1], /30 frames · 10 fps · 3 s · from 2 s/);
     assert.equal(media.currentTime, 2);
+});
+
+test("a connected setting the browser can't read still lets the cap set the preview loop", async () => {
+    const { node, value } = setup();
+    const media = player();
+    node.addDOMWidget("video-preview", "video", { querySelectorAll: () => [media] }, {});
+    const math = { type: "SomeMath", outputs: [{ name: "FLOAT" }], widgets: [{ name: "a", value: 1 }, { name: "b", value: 2 }] };
+    node.graph = { links: { 7: { origin_id: 9, origin_slot: 0 } }, getNodeById: (id) => (id === 9 ? math : null) };
+    node.inputs = [{ name: "frame_rate", widget: { name: "frame_rate" }, link: 7 }];
+    value("frame_rate").value = 10;
+    value("frame_load_cap").value = 20;
+    draw(node);
+    await flush();
+    const lines = draw(node);
+    assert.match(lines[1], /≈20 frames · 10 fps · 2 s · from 0 s/);
+    assert.match(lines[2], /frame_rate is only known when the workflow runs; using frame_rate 10/);
+    assert.equal(media.loop, false);
+    media.currentTime = 5;
+    value("frame_load_cap").value = 21;
+    draw(node);
+    assert.equal(media.currentTime, 0);
 });
 
 test("a dropped video still uploading is retried instead of shown as missing", async () => {
@@ -195,18 +216,29 @@ test("picking a format sets its frame rate; loading a saved workflow does not", 
     value("format").callback("MiniMax H3 (17n+5, 24 fps)");
     assert.equal(value("frame_rate").value, 24);
     value("frame_rate").value = 0;
-    node.onConfigure({ properties: { wn_load_video_v2: true }, widgets_values: [] });
+    node.onConfigure({ properties: { wn_load_video_v3: true }, widgets_values: [] });
     assert.equal(value("frame_rate").value, 0);
 });
+
+const NAMES = ["video", "frame_load_cap", "frame_rate", "skip_first_frames", "select_every_nth", "format", "load_audio"];
 
 test("workflows saved before the update keep their settings", () => {
     const { node, value } = setup();
     node.onConfigure({ properties: {}, widgets_values: ["clip.mp4", 12, 0, 3, 2, "H3", 768, 512, false] });
-    assert.deepEqual(
-        ["video", "start_time", "duration", "frame_load_cap", "frame_rate", "skip_first_frames",
-            "select_every_nth", "format", "load_audio"].map((name) => value(name).value),
-        ["clip.mp4", 0, 0, 0, 12, 3, 2, "MiniMax H3 (17n+5, 24 fps)", false]);
-    assert.equal(node.properties.wn_load_video_v2, true);
+    assert.deepEqual(NAMES.map((name) => value(name).value),
+        ["clip.mp4", 0, 12, 3, 2, "MiniMax H3 (17n+5, 24 fps)", false]);
+    assert.equal(node.properties.wn_load_video_v3, true);
+});
+
+test("workflows saved with start_time and duration get them as skip and cap", async () => {
+    const { node, value } = setup();
+    // Saved values in the start_time/duration layout: start 2 s, duration 3 s, cap 121, rate 0 (source 10 fps).
+    node.onConfigure({ properties: { wn_load_video_v2: true },
+        widgets_values: ["clip.mp4", 2, 3, 121, 0, 0, 1, "None", true, "image"] });
+    draw(node);
+    await flush();
+    draw(node);
+    assert.deepEqual(NAMES.map((name) => value(name).value), ["clip.mp4", 30, 0, 20, 1, "None", true]);
 });
 
 test("does not modify unrelated nodes or widgets", () => {

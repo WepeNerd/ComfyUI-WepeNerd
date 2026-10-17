@@ -237,8 +237,7 @@ class LoadVideoTests(unittest.TestCase):
         inputs = self.node.INPUT_TYPES()
         self.assertEqual(list(inputs["required"]), ["video"])
         self.assertEqual(list(inputs["optional"]), [
-            "start_time", "duration", "frame_load_cap", "frame_rate", "skip_first_frames",
-            "select_every_nth", "format", "load_audio"])
+            "frame_load_cap", "frame_rate", "skip_first_frames", "select_every_nth", "format", "load_audio"])
         self.assertEqual(inputs["optional"]["frame_load_cap"][1]["default"], 121)
 
     def test_file_listing_and_upload(self):
@@ -279,8 +278,8 @@ class LoadVideoTests(unittest.TestCase):
         self.assertEqual(interrupt.call_count, 4)
 
     def test_invalid_settings(self):
-        for settings in ({"frame_rate": float("nan")}, {"frame_rate": -1}, {"start_time": -1},
-                         {"duration": float("inf")}, {"frame_load_cap": -1}, {"select_every_nth": 0},
+        for settings in ({"frame_rate": float("nan")}, {"frame_rate": -1}, {"frame_rate": float("inf")},
+                         {"skip_first_frames": -1}, {"frame_load_cap": -1}, {"select_every_nth": 0},
                          {"format": "unknown"}):
             with self.subTest(settings=settings), self.assertRaises(ValueError):
                 self.load(**settings)
@@ -330,41 +329,47 @@ class LoadVideoTests(unittest.TestCase):
                                    np.arange(2000, dtype=np.float32) / 8000)
 
 
-    def test_start_time_and_duration(self):
-        images, count, rate, _audio = self.load(start_time=0.5, duration=0.3)
-        self.assert_frames(images, [15, 16, 17, 18, 19, 20, 21, 22, 23])
-        self.assertEqual((count, rate), (9, 30))
-        # Off-grid times pick the nearest source frames.
-        images, _, _, _audio = self.load(start_time=0.51, duration=0.1)
-        self.assert_frames(images, [15, 16, 17])
-        # Resampling starts its grid at start_time; skip, nth and cap apply inside the window.
-        images, count, rate, _audio = self.load(frame_rate=10, start_time=0.2, duration=0.5,
-                                               skip_first_frames=1, select_every_nth=2)
-        self.assert_frames(images, [10, 16])  # The same grid as from the top: rate 10 picks frames 1, 4, 7, 10, ...
-        self.assertEqual((count, rate), (2, 5))
-        with self.assertRaisesRegex(ValueError, "No frames selected"):
-            self.load(start_time=5)
-
-    def test_seeking_matches_decoding_from_the_top(self):
+    def test_skipping_seeks_and_keeps_the_same_frames(self):
+        # A large skip jumps to the keyframe before it; the frames must match decoding from the top and counting.
         path = self.root / "gop.mp4"
         write_gop_mp4(path)
+        real_probe, real_seek = video.probe_video, video.seek
+        calls = []
 
-        def refuse(*args, **kwargs):
-            raise av.error.FFmpegError(1, "seek refused")
+        def counting(*args):
+            calls.append(args[-1])
+            return real_seek(*args)
 
-        for settings in ({"start_time": 1.5}, {"start_time": 2.0, "duration": 0.5},
-                         {"start_time": 1.234, "frame_rate": 24}, {"start_time": 0.9, "frame_rate": 12.5},
-                         {"start_time": 2.5, "skip_first_frames": 2, "select_every_nth": 2}):
+        def no_seeking(target):
+            info = real_probe(target)
+            info["first_time"] = None
+            return info
+
+        for settings in ({"skip_first_frames": 45}, {"skip_first_frames": 61, "select_every_nth": 2},
+                         {"skip_first_frames": 37, "frame_rate": 24}, {"skip_first_frames": 23, "frame_rate": 12.5},
+                         {"skip_first_frames": 17, "frame_rate": 10, "select_every_nth": 3}):
             with self.subTest(settings=settings):
-                seeked = self.node.load_video(path.name, frame_load_cap=0, **settings)[0]
-                with patch.object(video, "seek", refuse):
-                    decoded = self.node.load_video(path.name, frame_load_cap=0, **settings)[0]
+                calls.clear()
+                with patch.object(video, "seek", counting):
+                    seeked, count, _, _ = self.node.load_video(path.name, frame_load_cap=0, **settings)[:4]
+                self.assertTrue(calls, "expected a seek")
+                with patch.object(video, "probe_video", no_seeking):
+                    decoded, expected, _, _ = self.node.load_video(path.name, frame_load_cap=0, **settings)[:4]
+                self.assertEqual(count, expected)
                 torch.testing.assert_close(seeked, decoded, rtol=0, atol=0)
+
+    def test_native_skip_counts_frames_when_the_frame_count_is_unknown(self):
+        # Matroska has no frame count, so native frames could be unevenly timed: count them instead of seeking.
+        self.assertFalse(video.probe_video(self.path)["frames_exact"])
+        with patch.object(video, "seek", side_effect=AssertionError("no seek expected")):
+            images, count, _, _audio = self.load(skip_first_frames=20)
+        self.assert_frames(images, list(range(20, 30)))
+        self.assertEqual(count, 10)
 
     def test_inexact_seek_falls_back_to_the_start(self):
         path = self.root / "gop.mp4"
         write_gop_mp4(path)
-        expected = self.node.load_video(path.name, start_time=2.0, frame_load_cap=5)[0]
+        expected = self.node.load_video(path.name, skip_first_frames=60, frame_load_cap=5)[0]
         real_seek = video.seek
         calls = []
 
@@ -373,15 +378,15 @@ class LoadVideoTests(unittest.TestCase):
             real_seek(container, stream, decoder, seconds + 1 if len(calls) == 1 else seconds)
 
         with patch.object(video, "seek", overshoot):
-            images = self.node.load_video(path.name, start_time=2.0, frame_load_cap=5)[0]
+            images = self.node.load_video(path.name, skip_first_frames=60, frame_load_cap=5)[0]
         self.assertEqual(len(calls), 2)
         torch.testing.assert_close(images, expected, rtol=0, atol=0)
 
-    def test_audio_follows_start_time(self):
+    def test_audio_follows_skip(self):
         write_video(self.path, count=10, rate=Fraction(10), audio=True)
         for frame_rate in (0, 10):
             with self.subTest(frame_rate=frame_rate):
-                audio = self.load(frame_rate=frame_rate, start_time=0.3, duration=0.4)[3]
+                audio = self.load(frame_rate=frame_rate, skip_first_frames=3, frame_load_cap=4)[3]
                 expected = np.arange(2400, 5600, dtype=np.float32) / 8000
                 np.testing.assert_allclose(audio["waveform"][0, 0].numpy(), expected)
 
@@ -431,8 +436,8 @@ class LoadVideoTests(unittest.TestCase):
 
     def test_plan_predicts_the_loaded_clip(self):
         info = video.probe_video(self.path)
-        for settings in ({}, {"frame_load_cap": 7}, {"start_time": 0.5, "duration": 0.3},
-                         {"frame_rate": 10, "start_time": 0.2, "duration": 0.5, "skip_first_frames": 1, "select_every_nth": 2},
+        for settings in ({}, {"frame_load_cap": 7}, {"skip_first_frames": 12, "frame_load_cap": 9},
+                         {"frame_rate": 10, "skip_first_frames": 3, "select_every_nth": 2},
                          {"skip_first_frames": 4, "select_every_nth": 3, "frame_load_cap": 5}):
             with self.subTest(settings=settings):
                 plan = video.plan_clip(info, **settings)

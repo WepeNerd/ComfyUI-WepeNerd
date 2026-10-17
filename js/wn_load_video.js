@@ -1,7 +1,8 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import {
-    ClipLooper, VALUES_MARKER, WATCHED, describe, linkedValue, migrateLegacyValues, planClip, resolveFormatName,
+    ClipLooper, V2_MARKER, VALUES_MARKER, WATCHED, describe, linkedValue, migrateLegacyValues, migrateV2Values,
+    planClip, resolveFormatName, windowToFrames,
 } from "./load_video.mjs";
 
 const LINE = 15;
@@ -17,12 +18,13 @@ function loadPresets() {
 const widgetOf = (node, name) => node.widgets?.find((widget) => widget.name === name);
 
 // Current settings. A connected input uses the value of the node it is connected to when the browser
-// can read it (Duration Selector, primitives), so the readout and preview follow that node live.
+// can read it (Duration Selector, primitives, Number Convert, Get/Set), so the readout and preview
+// follow that node live. Otherwise it falls back to the setting's own value, marked approximate.
 function settingsOf(node, presets) {
-    const settings = { unresolved: [] };
+    const settings = { approximate: [] };
     for (const name of WATCHED) {
         const linked = linkedValue(node.graph ?? app.graph, node, name, presets);
-        if (linked.linked && linked.unknown) settings.unresolved.push(name);
+        if (linked.linked && linked.unknown) settings.approximate.push(name);
         settings[name] = linked.linked && !linked.unknown ? linked.value : widgetOf(node, name)?.value;
     }
     for (const name of WATCHED.slice(1, -1)) settings[name] = Number(settings[name]) || 0;
@@ -148,6 +150,7 @@ function installInfo(node) {
     // Recompute whenever a watched value changes, however it changed (typing, loading a workflow,
     // an upload, or a change on a connected node), by comparing values each time the widget is drawn.
     function refresh() {
+        convertWindow();
         const settings = settingsOf(node, state.presets);
         const key = JSON.stringify(settings);
         if (key === state.key) return;
@@ -155,7 +158,7 @@ function installInfo(node) {
         if (settings.video !== state.video) fetchInfo(settings.video);
         const preset = presetFor(settings.format);
         state.lines = describe(state.info, settings, preset, settings.format);
-        if (state.info && !state.info.error && !settings.unresolved.length) {
+        if (state.info && !state.info.error) {
             const plan = planClip(state.info, settings, preset);
             looper.setRange(plan.clip_start, plan.count ? plan.clip_end : NaN);
         } else {
@@ -213,17 +216,41 @@ function installInfo(node) {
         };
     }
     enhancePreview(node, looper, previewLoaded);
-    return { refresh: () => { state.key = null; } };
+    // A workflow saved with start_time/duration: turn them into skip and cap once the frame rate is known
+    // (the frame_rate setting, or the video's own once it has been read).
+    function convertWindow() {
+        const pending = state.pendingWindow;
+        if (!pending) return;
+        const fps = Number(pending.frame_rate) || (state.info && !state.info.error ? state.info.fps : 0);
+        if (!fps) return;
+        state.pendingWindow = null;
+        for (const [name, value] of Object.entries(windowToFrames(pending, fps))) {
+            const widget = widgetOf(node, name);
+            if (widget) widget.value = value;
+        }
+        state.key = null;
+    }
+
+    return {
+        refresh: () => { state.key = null; },
+        convertWindow: (values) => {
+            state.pendingWindow = values.start_time > 0 || values.duration > 0 ? values : null;
+            state.key = null;
+        },
+    };
 }
 
+// Put the values of a workflow saved with an earlier settings layout back onto the right widgets.
 function migrate(node, info) {
     if (!info || info.properties?.[VALUES_MARKER]) return;
-    const values = migrateLegacyValues(info.widgets_values);
+    const v2 = Boolean(info.properties?.[V2_MARKER]);
+    const values = v2 ? migrateV2Values(info.widgets_values) : migrateLegacyValues(info.widgets_values);
     if (!values) return;
     for (const [name, value] of Object.entries(values)) {
         const widget = widgetOf(node, name);
         if (widget) widget.value = value;
     }
+    if (v2) node.wnLoadVideo?.convertWindow(values);
 }
 
 function fixFormat(node) {
