@@ -11,6 +11,7 @@ Resolution tools, painting and image warping, and spatial LoRA masks for ComfyUI
 | **Load Video (Upload)** | Load a clip by frame cap and skip into an IMAGE batch, with audio, transparency mask, model frame presets, a readout of what will load, and a preview that loops the clip |
 | **Save Video** | Save an IMAGE batch as MP4 (H.264, H.265, AV1), WebM, ProRes, lossless FFV1, GIF or WebP in one pass, with audio, transparency and the workflow embedded; no FFmpeg executable needed |
 | **Duration Selector** | Pick a clip length that is legal for LTX, MiniMax H3, Wan, Hunyuan, Cosmos or Mochi, as frames or seconds kept in sync |
+| **Frame Slicer** | Keep a run of frames (`start` to `stop`) from an IMAGE batch, like RES4LYF's Frames Slice |
 | **Speedpaint** | Sketch from a blank canvas or imported image and output an IMAGE |
 | **Paint Mask** | Paint a MASK over an uploaded or connected image and pass the IMAGE downstream |
 | **Liquify Image** | Push-warp files or connected IMAGE batches with editable strokes and full-resolution output |

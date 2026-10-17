@@ -12,6 +12,7 @@
     "WN_LiquifyImage": "liquify_node",
     "WepeNerdLoadLoraMasked": "masked_lora_node",
     "WN_MaskedLoraSnapshot": "masked_lora_node",
-    "WN_FrameNumberSelector": "frame_number_node"
+    "WN_FrameNumberSelector": "frame_number_node",
+    "WN_FrameSlicer": "frame_slicer_node"
   }
 }

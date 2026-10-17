@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add Frame Slicer: keeps frames `start` up to `stop` of an IMAGE batch, with the same
+  inputs as RES4LYF's Frames Slice. A range that would keep no frames gives a clear
+  error instead of an empty batch.
 - Add Save Video: a streamlined take on VHS Video Combine. Saves MP4 (H.264, H.265
   10-bit, AV1 10-bit), WebM VP9, MOV ProRes, MKV FFV1 16-bit lossless, GIF or WebP
   with PyAV in one pass: audio is muxed into the same file and trimmed to the video,

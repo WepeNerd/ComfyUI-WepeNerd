@@ -260,6 +260,21 @@ editing; no restart is needed. A count that isn't legal for the preset (an old
 workflow or an API call) is snapped to the nearest legal one, ties going up, with a
 warning in the console.
 
+## Frame Slicer
+
+Under **WepeNerd/Video**, connect an IMAGE batch to `frames` and set `start` and
+`stop`. The output is `frames[start:stop]`: frames are numbered from 0, `start` is
+the first frame kept and `stop` is the first frame left out, so `start` 2 and
+`stop` 5 keeps frames 2, 3 and 4 (three frames). A `stop` past the end keeps the
+rest of the batch. Inputs and defaults match RES4LYF's **Frames Slice**, so the
+same numbers give the same frames.
+
+Unlike Frames Slice, a range that would keep nothing (`start` at or past the
+batch length, or `stop` not greater than `start`) stops the run with a message
+saying why, instead of passing an empty batch on to fail in a later node.
+
+The frames are copied exactly, keeping their size, channels, dtype and device.
+
 ## Drag Resolution
 
 

@@ -22,6 +22,8 @@ from .qwen_edit_mask_node import NODE_DISPLAY_NAME_MAPPINGS as QWEN_MASK_NAMES
 from .frame_number_node import NODE_CLASS_MAPPINGS as FRAME_NUMBER_NODES
 from .frame_number_node import NODE_DISPLAY_NAME_MAPPINGS as FRAME_NUMBER_NAMES
 from .frame_number_node import register_frame_number_routes
+from .frame_slicer_node import NODE_CLASS_MAPPINGS as FRAME_SLICER_NODES
+from .frame_slicer_node import NODE_DISPLAY_NAME_MAPPINGS as FRAME_SLICER_NAMES
 
 WEB_DIRECTORY = "./js"
 NODE_CLASS_MAPPINGS = {
@@ -61,6 +63,8 @@ NODE_CLASS_MAPPINGS.update(QWEN_MASK_NODES)
 NODE_DISPLAY_NAME_MAPPINGS.update(QWEN_MASK_NAMES)
 NODE_CLASS_MAPPINGS.update(FRAME_NUMBER_NODES)
 NODE_DISPLAY_NAME_MAPPINGS.update(FRAME_NUMBER_NAMES)
+NODE_CLASS_MAPPINGS.update(FRAME_SLICER_NODES)
+NODE_DISPLAY_NAME_MAPPINGS.update(FRAME_SLICER_NAMES)
 
 register_speedpaint_routes()
 register_frame_number_routes()
