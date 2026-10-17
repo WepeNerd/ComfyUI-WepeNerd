@@ -369,17 +369,14 @@ def load_audio_segment(path, start_time, duration):
 class WN_LoadVideo:
     CATEGORY = "WepeNerd/Video"
     FUNCTION = "load_video"
-    RETURN_TYPES = ("IMAGE", "INT", "FLOAT", "AUDIO", "MASK", "INT", "INT", "FLOAT")
-    RETURN_NAMES = ("images", "frame_count", "frame_rate", "audio", "mask", "width", "height", "source_fps")
+    RETURN_TYPES = ("IMAGE", "INT", "FLOAT", "AUDIO", "MASK")
+    RETURN_NAMES = ("images", "frame_count", "frame_rate", "audio", "mask")
     OUTPUT_TOOLTIPS = (
         "RGB frames at the source resolution.",
         "Number of frames in images.",
         "Frame rate of images: the chosen (or source) FPS divided by select_every_nth.",
         "Audio for exactly the loaded clip, or None.",
         "Transparency as a mask (1 = transparent, like Load Image). A 64x64 empty mask if the video is opaque.",
-        "Width of images.",
-        "Height of images.",
-        "The source file's average frame rate.",
     )
     DESCRIPTION = (
         "Load a video as RGB images. Order: start time, duration, frame rate, skip, every nth, cap, "
@@ -518,7 +515,7 @@ class WN_LoadVideo:
             mask = torch.zeros((1, 64, 64), dtype=torch.float32)
         output_rate = Fraction(str(frame_rate or source_rate)) / select_every_nth
         audio = load_audio_segment(path, audio_start, count / output_rate) if load_audio else None
-        return (output, count, float(output_rate), audio, mask, width, height, float(source_rate))
+        return (output, count, float(output_rate), audio, mask)
 
 
 def register_load_video_routes():

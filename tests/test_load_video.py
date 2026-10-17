@@ -385,10 +385,10 @@ class LoadVideoTests(unittest.TestCase):
                 expected = np.arange(2400, 5600, dtype=np.float32) / 8000
                 np.testing.assert_allclose(audio["waveform"][0, 0].numpy(), expected)
 
-    def test_size_rate_and_empty_mask_outputs(self):
-        self.assertEqual(self.node.RETURN_NAMES[4:], ("mask", "width", "height", "source_fps"))
-        _, count, rate, _, mask, width, height, source_fps = self.load_all(select_every_nth=2)
-        self.assertEqual((count, rate, width, height, source_fps), (15, 15, 34, 18, 30))
+    def test_outputs_and_empty_mask(self):
+        self.assertEqual(self.node.RETURN_NAMES, ("images", "frame_count", "frame_rate", "audio", "mask"))
+        images, count, rate, _, mask = self.load_all(select_every_nth=2)
+        self.assertEqual((count, rate, tuple(images.shape[1:3])), (15, 15, (18, 34)))
         self.assertEqual(tuple(mask.shape), (1, 64, 64))
         self.assertFalse(mask.any())
 

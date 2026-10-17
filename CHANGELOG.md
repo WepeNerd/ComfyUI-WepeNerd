@@ -22,8 +22,8 @@
 - Load Video: format presets now come from `frame_number_presets.json`, shared with
   Duration Selector; picking one sets the model's frame rate. Old format names in
   saved workflows map to the matching preset. Adds a Cosmos 1.0 preset to both nodes.
-- Load Video: add `mask` (transparency, for WebM/MOV/GIF with alpha), `width`, `height`
-  and `source_fps` outputs after the existing ones.
+- Load Video: add a `mask` output (transparency, for WebM/MOV/GIF with alpha) after the
+  existing ones.
 - Load Video: remove `custom_width` and `custom_height`; resize with a separate node.
   Presets no longer change the image size. Saved workflows keep their other settings.
 - Load Video: list input videos faster (no per-file stat on Windows, brief cache).

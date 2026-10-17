@@ -76,10 +76,8 @@ it becomes `None`. Presets no longer change the image size.
 | `frame_rate` | The requested (or source) FPS divided by every nth. Native variable-rate videos report an average FPS; set a positive FPS for uniform timing. |
 | `audio` | ComfyUI's standard AUDIO for exactly the loaded clip, or `None` without an audio track or with `load_audio` off. |
 | `mask` | Transparency as a MASK (1 = transparent, as in Load Image) for WebM (VP8/VP9 with alpha), MOV (PNG, QuickTime Animation, ProRes 4444) and GIF. An opaque video gives a 64×64 empty mask, like Load Image. |
-| `width` / `height` | Size of `images`. |
-| `source_fps` | The file's average frame rate. |
 
-The new outputs follow the original four, so existing links are unchanged.
+`mask` comes after the original four outputs, so existing links are unchanged.
 The `audio` output preserves source sample rate and channels. It starts at the
 selected video interval and spans `frame_count / frame_rate` seconds after preset
 trimming. Audio remains at its original speed; every-nth selection reduces the output
