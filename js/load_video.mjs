@@ -124,6 +124,11 @@ export function describe(info, settings, preset, formatName = "None") {
         `${info.frames_exact ? "" : "≈"}${info.frames} frames`];
     if (info.audio) source.push("audio");
     if (info.alpha) source.push("alpha");
+    const unresolved = settings.unresolved ?? [];
+    if (unresolved.length) {
+        return { source: `Source  ${source.join(" · ")}`, output: "Loads  (worked out when the workflow runs)",
+            note: `Connected ${unresolved.join(", ")} has no value until the workflow runs.`, warn: false, plan: null };
+    }
     const plan = planClip(info, settings, preset);
     const approx = plan.estimate ? "≈" : "";
     let note = "", warn = false;
@@ -237,4 +242,75 @@ export class ClipLooper {
         if (entry.frame !== null) this.cancel(entry.frame);
         entry.frame = null;
     }
+}
+
+// Values a connected input will receive, read from the node it is connected to (through reroutes
+// and KJNodes Get/Set pairs), so the readout
+// and preview can follow another node (such as Duration Selector) before the workflow runs.
+// Returns { linked: false } for a plain widget, { linked: true, value } when the source node's
+// value can be read in the browser, and { linked: true, unknown: true } when it is only known at
+// run time (a math node, say).
+const DURATION_SELECTOR = "WN_FrameNumberSelector";
+const REROUTES = new Set(["Reroute", "RerouteNode"]);
+
+const typeOf = (node) => node?.comfyClass ?? node?.type;
+
+function linkById(graph, id) {
+    const links = graph?.links;
+    if (!links || id === null || id === undefined) return null;
+    return typeof links.get === "function" ? links.get(id) : links[id];
+}
+
+function inputFor(node, name) {
+    return node?.inputs?.find((input) => input.widget?.name === name || input.name === name) ?? null;
+}
+
+function sourceValue(graph, node, slot, presets, depth) {
+    if (!node || depth > 32) return { unknown: true };
+    const type = typeOf(node);
+    if (REROUTES.has(type)) {
+        const link = linkById(graph, node.inputs?.[0]?.link);
+        if (!link) return { unknown: true };
+        return sourceValue(graph, graph.getNodeById?.(link.origin_id), link.origin_slot, presets, depth + 1);
+    }
+    if (type === "GetNode") {
+        // KJNodes Get/Set: follow the Set node with the same name to whatever feeds it.
+        const name = node.widgets?.[0]?.value;
+        const nodes = graph._nodes ?? graph.nodes ?? [];
+        const setter = nodes.find((item) => typeOf(item) === "SetNode" && item.widgets?.[0]?.value === name);
+        const link = linkById(graph, setter?.inputs?.[0]?.link);
+        if (!link) return { unknown: true };
+        return sourceValue(graph, graph.getNodeById?.(link.origin_id), link.origin_slot, presets, depth + 1);
+    }
+    const widget = (name) => node.widgets?.find((item) => item.name === name);
+    if (type === DURATION_SELECTOR) {
+        const frames = Number.parseInt(String(widget("frames")?.value), 10);
+        const fps = presets?.[widget("preset")?.value]?.fps;
+        if (slot === 0) return Number.isFinite(frames) ? { value: frames } : { unknown: true };
+        if (!(fps > 0)) return { unknown: true };
+        if (slot === 1) return { value: fps };
+        if (slot === 2 && Number.isFinite(frames)) return { value: frames / fps };
+        return { unknown: true };
+    }
+    // A node that just passes on one of its widgets: an output named after the widget, or a
+    // single-output primitive whose only widget is the value (PrimitiveNode, Int, Float, ...).
+    const output = node.outputs?.[slot];
+    const passThrough = (item) => item && !inputFor(node, item.name)?.link;
+    const named = widget(output?.name);
+    if (passThrough(named)) return { value: named.value };
+    const values = (node.widgets ?? []).filter((item) => item.type !== "button" && item.name !== "control_after_generate"
+        && item.name !== "control_before_generate");
+    if ((node.outputs?.length ?? 0) === 1 && values.length === 1 && passThrough(values[0])
+        && (type === "PrimitiveNode" || /^Primitive/.test(type ?? "") || node.isVirtualNode)) {
+        return { value: values[0].value };
+    }
+    return { unknown: true };
+}
+
+export function linkedValue(graph, node, name, presets = {}) {
+    const input = inputFor(node, name);
+    const link = linkById(graph, input?.link);
+    if (!link) return { linked: false };
+    const result = sourceValue(graph, graph.getNodeById?.(link.origin_id), link.origin_slot, presets, 0);
+    return { linked: true, ...result };
 }

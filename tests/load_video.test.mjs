@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
-    ClipLooper, LEGACY_FORMATS, describe, formatSeconds, largestValid, migrateLegacyValues, planClip,
+    ClipLooper, LEGACY_FORMATS, describe, formatSeconds, largestValid, linkedValue, migrateLegacyValues, planClip,
     resolveFormatName,
 } from "../js/load_video.mjs";
 
@@ -151,4 +151,75 @@ test("without a range the whole file loops, and detaching removes listeners", ()
     looper.detach(player);
     assert.deepEqual(Object.keys(player.listeners), []);
     assert.equal(clock.size, 0);
+});
+
+function fakeGraph(nodes, links) {
+    return {
+        links: new Map(Object.entries(links).map(([id, link]) => [Number(id), link])),
+        getNodeById: (id) => nodes[id],
+    };
+}
+
+test("connected inputs read the Duration Selector, primitives and reroutes", () => {
+    const presets = { H3: { fps: 24 } };
+    const duration = {
+        type: "WN_FrameNumberSelector",
+        widgets: [{ name: "preset", value: "H3" }, { name: "frames", value: "124" }, { name: "seconds", value: 5.17 }],
+        outputs: [{ name: "frames" }, { name: "fps" }, { name: "seconds" }],
+    };
+    const primitive = { type: "PrimitiveNode", outputs: [{ name: "FLOAT" }],
+        widgets: [{ name: "value", value: 2.5 }, { name: "control_after_generate", value: "fixed" }] };
+    const reroute = { type: "Reroute", inputs: [{ name: "", link: 5 }], outputs: [{ name: "" }] };
+    const math = { type: "SomeMath", outputs: [{ name: "INT" }], widgets: [{ name: "a", value: 3 }, { name: "b", value: 4 }] };
+    const video = { inputs: [
+        { name: "frame_load_cap", widget: { name: "frame_load_cap" }, link: 1 },
+        { name: "frame_rate", widget: { name: "frame_rate" }, link: 2 },
+        { name: "duration", widget: { name: "duration" }, link: 3 },
+        { name: "start_time", widget: { name: "start_time" }, link: 4 },
+        { name: "skip_first_frames", widget: { name: "skip_first_frames" }, link: 6 },
+        { name: "select_every_nth", widget: { name: "select_every_nth" }, link: null },
+    ] };
+    const graph = fakeGraph({ 1: duration, 2: primitive, 3: reroute, 4: math }, {
+        1: { origin_id: 1, origin_slot: 0 }, 2: { origin_id: 1, origin_slot: 1 }, 3: { origin_id: 3, origin_slot: 0 },
+        4: { origin_id: 2, origin_slot: 0 }, 5: { origin_id: 1, origin_slot: 2 }, 6: { origin_id: 4, origin_slot: 0 },
+    });
+    assert.deepEqual(linkedValue(graph, video, "frame_load_cap", presets), { linked: true, value: 124 });
+    assert.deepEqual(linkedValue(graph, video, "frame_rate", presets), { linked: true, value: 24 });
+    assert.ok(Math.abs(linkedValue(graph, video, "duration", presets).value - 124 / 24) < 1e-9);
+    assert.deepEqual(linkedValue(graph, video, "start_time", presets), { linked: true, value: 2.5 });
+    assert.deepEqual(linkedValue(graph, video, "skip_first_frames", presets), { linked: true, unknown: true });
+    assert.deepEqual(linkedValue(graph, video, "select_every_nth", presets), { linked: false });
+    // Without presets the fps of a Duration Selector is unknown, but its frames are not.
+    assert.deepEqual(linkedValue(graph, video, "frame_rate", {}), { linked: true, unknown: true });
+    assert.deepEqual(linkedValue(graph, video, "frame_load_cap", {}), { linked: true, value: 124 });
+});
+
+test("a value known only at run time is shown as such", () => {
+    const info = { width: 64, height: 32, fps: 10, duration: 10, frames: 100, frames_exact: true };
+    const lines = describe(info, { frame_load_cap: 0, unresolved: ["skip_first_frames"] }, null);
+    assert.equal(lines.output, "Loads  (worked out when the workflow runs)");
+    assert.match(lines.note, /skip_first_frames has no value until the workflow runs/);
+});
+
+test("connected inputs follow KJNodes Get/Set pairs", () => {
+    const duration = {
+        type: "WN_FrameNumberSelector",
+        widgets: [{ name: "preset", value: "H3" }, { name: "frames", value: "107" }],
+        outputs: [{ name: "frames" }, { name: "fps" }, { name: "seconds" }],
+    };
+    const set = { type: "SetNode", widgets: [{ name: "Constant", value: "frames" }], inputs: [{ name: "INT", link: 1 }] };
+    const get = { type: "GetNode", widgets: [{ name: "Constant", value: "frames" }], outputs: [{ name: "INT" }] };
+    const lonely = { type: "GetNode", widgets: [{ name: "Constant", value: "missing" }], outputs: [{ name: "INT" }] };
+    const video = { inputs: [
+        { name: "frame_load_cap", widget: { name: "frame_load_cap" }, link: 2 },
+        { name: "skip_first_frames", widget: { name: "skip_first_frames" }, link: 3 },
+    ] };
+    const nodes = { 1: duration, 2: set, 3: get, 4: lonely };
+    const graph = {
+        _nodes: Object.values(nodes),
+        links: { 1: { origin_id: 1, origin_slot: 0 }, 2: { origin_id: 3, origin_slot: 0 }, 3: { origin_id: 4, origin_slot: 0 } },
+        getNodeById: (id) => nodes[id],
+    };
+    assert.deepEqual(linkedValue(graph, video, "frame_load_cap", {}), { linked: true, value: 107 });
+    assert.deepEqual(linkedValue(graph, video, "skip_first_frames", {}), { linked: true, unknown: true });
 });

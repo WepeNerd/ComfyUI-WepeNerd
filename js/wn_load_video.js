@@ -1,7 +1,7 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import {
-    ClipLooper, VALUES_MARKER, WATCHED, describe, migrateLegacyValues, planClip, resolveFormatName,
+    ClipLooper, VALUES_MARKER, WATCHED, describe, linkedValue, migrateLegacyValues, planClip, resolveFormatName,
 } from "./load_video.mjs";
 
 const LINE = 15;
@@ -16,9 +16,15 @@ function loadPresets() {
 
 const widgetOf = (node, name) => node.widgets?.find((widget) => widget.name === name);
 
-function settingsOf(node) {
-    const settings = {};
-    for (const name of WATCHED) settings[name] = widgetOf(node, name)?.value;
+// Current settings. A connected input uses the value of the node it is connected to when the browser
+// can read it (Duration Selector, primitives), so the readout and preview follow that node live.
+function settingsOf(node, presets) {
+    const settings = { unresolved: [] };
+    for (const name of WATCHED) {
+        const linked = linkedValue(node.graph ?? app.graph, node, name, presets);
+        if (linked.linked && linked.unknown) settings.unresolved.push(name);
+        settings[name] = linked.linked && !linked.unknown ? linked.value : widgetOf(node, name)?.value;
+    }
     for (const name of WATCHED.slice(1, -1)) settings[name] = Number(settings[name]) || 0;
     settings.select_every_nth = Math.max(1, settings.select_every_nth);
     return settings;
@@ -119,17 +125,17 @@ function installInfo(node) {
             });
     }
 
-    // Recompute whenever a watched widget changes, however it changed (typing, loading a
-    // workflow, an upload), by comparing values each time the widget is drawn.
+    // Recompute whenever a watched value changes, however it changed (typing, loading a workflow,
+    // an upload, or a change on a connected node), by comparing values each time the widget is drawn.
     function refresh() {
-        const settings = settingsOf(node);
+        const settings = settingsOf(node, state.presets);
         const key = JSON.stringify(settings);
         if (key === state.key) return;
         state.key = key;
         if (settings.video !== state.video) fetchInfo(settings.video);
         const preset = presetFor(settings.format);
         state.lines = describe(state.info, settings, preset, settings.format);
-        if (state.info && !state.info.error) {
+        if (state.info && !state.info.error && !settings.unresolved.length) {
             const plan = planClip(state.info, settings, preset);
             looper.setRange(plan.clip_start, plan.count ? plan.clip_end : NaN);
         } else {

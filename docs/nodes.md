@@ -46,6 +46,14 @@ nothing would load, when the count is outside the chosen preset's range, or when
 uncapped load needs more than 8 GB. A `≈` marks counts that depend on where the file
 ends, or on variable frame timing, since container headers can be approximate.
 
+Settings connected to another node follow it too. With Duration Selector's `frames`
+connected to `frame_load_cap` (or `fps` to `frame_rate`, `seconds` to `duration`),
+changing the Duration Selector updates this readout and the preview at once, before
+the workflow runs. Values from primitives, reroutes and KJNodes Get/Set pairs are read
+the same way. A value another node only works out when the workflow runs (a math node,
+say) can't be known in advance: the readout says so and the preview loops the whole
+video.
+
 The source-video preview autoplays muted and loops over the clip that will load:
 from its start time for as long as the output lasts. Changing `start_time`,
 `duration`, `frame_load_cap`, skip, every nth, frame rate or format moves the preview

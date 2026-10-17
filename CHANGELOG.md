@@ -8,6 +8,10 @@
   no first-frame PNG or `-audio` duplicate is written, and the workflow is embedded
   so the file loads back into ComfyUI. Transparency comes from a `mask` input (the
   Load Video/Load Image convention) or a fourth image channel. Outputs `filepath`.
+- Load Video: the readout and looping preview follow connected inputs. Driving
+  `frame_load_cap`, `frame_rate` or `duration` from Duration Selector (or a primitive,
+  also through reroutes and KJNodes Get/Set nodes) updates them live as you change
+  that node.
 - Zoom Crop: replace the position dropdown with a one-click 5×5 picker that previews
   the kept area, supports click-and-drag, hover preview and arrow keys, and never
   opens the 25-item list. Saved workflows keep their position.
