@@ -819,12 +819,19 @@ change their height but not remove them.
 | `sigma_min` | Lowest sigma used by presets and the bottom of the **Log** view. It does not clamp the output |
 | `interpolation` | `log smooth` (default) bends in log-sigma space, so exponential/Karras-like curves need few points. `smooth` is a monotone cubic in linear space. `linear` joins points with straight lines. None of them overshoot between points |
 | `end_at_zero` | On: output is `steps` curve values plus a final 0 (ComfyUI's usual layout; shown as a dashed drop at the end). Off: the curve supplies all `steps + 1` values |
+| `model` | Optional. When connected, the output uses the model's own `sigma_max` (and presets its `sigma_min`), including any ModelSamplingSD3/Flux shift patch, so a flow model gets 1.0 without you setting it. After the first run the two widgets update to the model's values so the graph matches; until then the graph shows the widget values |
 
 **Preset** replaces the curve with a fitted Karras, exponential, poly-exponential,
 linear, Align Your Steps (SDXL), flow shift 3/6, or cosine schedule over
-`sigma_min`–`sigma_max`, and sets a matching interpolation. **Log** changes only the
+`sigma_min`–`sigma_max`, and sets a matching interpolation. Each preset is fitted with up
+to 12 points and matches ComfyUI's scheduler of the same name step for step: within
+0.5%, and within about 2% for Align Your Steps. Flow presets scale to `sigma_max` and
+ignore `sigma_min`, like ComfyUI's simple scheduler on a flow model. Flow and Align Your
+Steps depend on the step count (their last real step is not `sigma_min`), so they are
+fitted for the current `steps` and `end_at_zero`; apply the preset again after changing them. **Log** changes only the
 view and helps with low-sigma detail. **Copy** puts the output sigmas on the clipboard.
-**Paste** reads a list such as `14.6, 6.3, 3.7, …, 0` and creates one point per value,
+**Paste** reads a list such as `14.6, 6.3, 3.7, …, 0`, one value per line, or a printed
+tensor (`tensor([1.4615e+01, …])`), and creates one point per value,
 setting `steps`, `sigma_max`, and `sigma_min` to match.
 
 A warning appears in the corner if the schedule rises anywhere; most samplers expect

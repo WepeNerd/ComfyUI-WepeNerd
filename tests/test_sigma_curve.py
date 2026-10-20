@@ -53,6 +53,64 @@ class SigmaCurveMathTest(unittest.TestCase):
         self.assertEqual(tuple(sigmas.shape), (9,))
         self.assertEqual(float(sigmas[-1]), 0.0)
 
+    def test_exactly_max_points_keeps_the_end_point(self):
+        n = sc.MAX_POINTS
+        pts = [[i / (n - 1), 1 - 0.99 * i / (n - 1)] for i in range(n)]
+        out = sc.normalize_points(pts)
+        self.assertEqual(len(out), n)
+        self.assertEqual(out[-1][0], 1.0)
+        self.assertAlmostEqual(out[-1][1], 0.01)
+
+
+class _Sampling:
+    def __init__(self, hi, lo):
+        self.sigma_max, self.sigma_min = hi, lo
+
+
+class _Model:
+    def __init__(self, hi, lo):
+        self._sampling = _Sampling(hi, lo)
+
+    def get_model_object(self, name):
+        if name != "model_sampling":
+            raise KeyError(name)
+        return self._sampling
+
+
+class SigmaCurveModelTest(unittest.TestCase):
+    def test_model_range_overrides_widgets(self):
+        self.assertEqual(sc.model_sigma_range(_Model(1.0, 0.002)), (1.0, 0.002))
+        self.assertEqual(sc.resolve_range(14.6, 0.03), (14.6, 0.03))
+        self.assertEqual(sc.resolve_range(float("nan"), None),
+                         (sc.DEFAULT_SIGMA_MAX, sc.DEFAULT_SIGMA_MIN))
+
+    def test_unusable_model_falls_back_to_widgets(self):
+        self.assertIsNone(sc.model_sigma_range(None))
+        self.assertIsNone(sc.model_sigma_range(object()))
+        self.assertIsNone(sc.model_sigma_range(_Model(float("inf"), 0.1)))
+        self.assertIsNone(sc.model_sigma_range(_Model(0.0, 0.0)))
+
+    def test_model_is_optional(self):
+        types = sc.WN_SigmaCurve.INPUT_TYPES()
+        self.assertEqual(types["optional"]["model"][0], "MODEL")
+        self.assertNotIn("model", types["required"])
+
+    def test_node_scales_to_model_and_reports_range(self):
+        try:
+            import torch  # noqa: F401
+        except ImportError:
+            self.skipTest("torch unavailable")
+        node = sc.WN_SigmaCurve()
+        out = node.build(4, 14.6, 0.03, "linear", True, '{"points":[[0,1],[1,0.5]]}',
+                         model=_Model(1.0, 0.002))
+        self.assertEqual(out["ui"]["wn_model_sigmas"], [1.0, 0.002])
+        (sigmas,) = out["result"]
+        self.assertAlmostEqual(float(sigmas[0]), 1.0)
+        self.assertAlmostEqual(float(sigmas[3]), 0.5)
+        self.assertEqual(float(sigmas[4]), 0.0)
+        (plain,) = node.build(4, 2.0, 0.03, "linear", True, '{"points":[[0,1],[1,0.5]]}')
+        self.assertAlmostEqual(float(plain[0]), 2.0)
+
 
 if __name__ == "__main__":
     unittest.main()

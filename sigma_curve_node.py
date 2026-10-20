@@ -14,8 +14,10 @@ LOG_FLOOR = 1e-5
 MODES = ["log smooth", "smooth", "linear"]
 DEFAULT_SIGMA_MAX = 14.614642
 DEFAULT_SIGMA_MIN = 0.0291675
+# Karras fitted by js/sigma_curve.mjs (fitCurve); tests check the two stay identical.
 DEFAULT_CURVE = (
-    '{"v":1,"points":[[0,1],[0.2,0.416169],[0.575,0.05547],[0.85,0.007782],'
+    '{"v":1,"points":[[0,1],[0.065,0.761052],[0.2,0.416169],[0.365,0.183976],'
+    '[0.575,0.05547],[0.76,0.015753],[0.855,0.007467],[0.955,0.003089],'
     '[1,0.001996]],"log":false,"snap":true}'
 )
 
@@ -153,6 +155,26 @@ def parse_curve(text):
     return normalize_points(data.get("points"))
 
 
+def model_sigma_range(model):
+    """Return (sigma_max, sigma_min) from a ComfyUI MODEL, or None if unavailable."""
+    if model is None:
+        return None
+    try:
+        sampling = model.get_model_object("model_sampling")
+        hi, lo = float(sampling.sigma_max), float(sampling.sigma_min)
+    except Exception:  # unexpected model wrapper: fall back to the widgets
+        return None
+    if not (math.isfinite(hi) and math.isfinite(lo)) or hi <= 0:
+        return None
+    return hi, max(lo, 0.0)
+
+
+def resolve_range(sigma_max, sigma_min):
+    """Widget sigma_max/sigma_min, made finite and non-negative."""
+    return (max(_finite(sigma_max, DEFAULT_SIGMA_MAX), 0.0),
+            max(_finite(sigma_min, DEFAULT_SIGMA_MIN), 0.0))
+
+
 class WN_SigmaCurve:
     """Visual sigma schedule editor that outputs SIGMAS for SamplerCustom."""
 
@@ -171,6 +193,11 @@ class WN_SigmaCurve:
                                             "tooltip": "Append a final 0 sigma after the curve's steps."}),
                 "curve": ("STRING", {"default": DEFAULT_CURVE, "multiline": False}),
             },
+            "optional": {
+                "model": ("MODEL", {"tooltip": "Optional. Use this model's sigma_max and sigma_min "
+                                    "instead of the widgets (e.g. 1.0 for flow models). The widgets "
+                                    "update to match after the first run."}),
+            },
         }
 
     RETURN_TYPES = ("SIGMAS",)
@@ -178,10 +205,14 @@ class WN_SigmaCurve:
     FUNCTION = "build"
     CATEGORY = "WepeNerd/Sampling"
 
-    def build(self, steps, sigma_max, sigma_min, interpolation, end_at_zero, curve):
+    def build(self, steps, sigma_max, sigma_min, interpolation, end_at_zero, curve, model=None):
         import torch
 
-        sigma_max = max(_finite(sigma_max, DEFAULT_SIGMA_MAX), 0.0)
-        values = sample_sigmas(parse_curve(curve), steps, sigma_max,
-                               interpolation, bool(end_at_zero))
-        return (torch.FloatTensor(values),)
+        from_model = model_sigma_range(model)
+        hi, lo = from_model or resolve_range(sigma_max, sigma_min)
+        values = sample_sigmas(parse_curve(curve), steps, hi, interpolation, bool(end_at_zero))
+        result = (torch.FloatTensor(values),)
+        if from_model:
+            # lets the graph adopt the model's range so the preview matches the output
+            return {"ui": {"wn_model_sigmas": [hi, lo]}, "result": result}
+        return result

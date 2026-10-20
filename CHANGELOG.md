@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Sigma Curve: presets now match ComfyUI's schedulers step for step. Poly-exponential
+  was mirrored (it held high sigmas, then dropped sharply). Flow shift 3/6 and Align
+  Your Steps ended on `sigma_min` instead of ComfyUI's last real step, and Align Your
+  Steps used rounded noise levels. Presets are fitted more tightly (up to 12 points;
+  Karras error drops from about 2% to 0.4%), and flow/AYS are fitted for the current
+  step count.
+- Sigma Curve: add an optional `model` input. When connected, the output uses the
+  model's sigma range (1.0 for flow models, shift patches included) and the
+  `sigma_max`/`sigma_min` widgets update to match after a run.
+- Sigma Curve: Paste now reads scientific notation and printed tensors; it previously
+  turned `1e-05` into `1, -5`. A curve with exactly 64 points no longer drops its end
+  point in the graph, so the preview again matches the output.
 - Add Frame Slicer: keeps frames `start` up to `stop` of an IMAGE batch, with the same
   inputs as RES4LYF's Frames Slice. A range that would keep no frames gives a clear
   error instead of an empty batch.

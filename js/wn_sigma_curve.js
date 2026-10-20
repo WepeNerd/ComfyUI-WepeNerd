@@ -1,8 +1,8 @@
 import { app } from "../../scripts/app.js";
 import {
     MIN_GAP, MAX_POINTS, MODES, PRESETS, DEFAULT_CURVE, fitCurve, makeEvaluator,
-    normalizePoints, parseCurve, round, samplePositions, sampleSigmas, serializeCurve,
-} from "./sigma_curve.mjs?v=1";
+    normalizePoints, parseCurve, parseSigmaList, round, samplePositions, sampleSigmas, serializeCurve,
+} from "./sigma_curve.mjs?v=2";
 
 const NODE_NAME = "WN_SigmaCurve";
 const ACCENT = "#5a96ff";
@@ -48,6 +48,7 @@ function button(text, title) {
 }
 
 const widget = (node, name) => node.widgets?.find((w) => w.name === name);
+const modelLinked = (node) => node.inputs?.some((i) => i.name === "model" && i.link != null);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 function fmt(v) {
@@ -355,7 +356,8 @@ function setupSigmaCurve(node) {
         const rises = sig.some((v, i) => i && v > sig[i - 1] + 1e-9);
         ctx.font = "10px sans-serif"; ctx.textAlign = "right"; ctx.textBaseline = "top";
         ctx.fillStyle = rises ? "#ffb86b" : "#6d6e73";
-        ctx.fillText(rises ? "⚠ sigmas increase somewhere" : `${p.steps} steps · ${p.mode}`, r.x + r.w - 2, r.y + 3);
+        const status = `${p.steps} steps · ${p.mode}${modelLinked(node) ? " · σ range from model" : ""}`;
+        ctx.fillText(rises ? "⚠ sigmas increase somewhere" : status, r.x + r.w - 2, r.y + 3);
 
         updateFooter(p);
     }
@@ -504,6 +506,7 @@ function setupSigmaCurve(node) {
 
     // ---- toolbar ---------------------------------------------------------
     preset.addEventListener("pointerdown", (e) => e.stopPropagation());
+    preset.title += ". Flow and Align Your Steps are fitted for the current steps; re-apply after changing steps";
     preset.onchange = () => {
         const def = PRESETS[preset.value];
         preset.value = "";
@@ -512,7 +515,7 @@ function setupSigmaCurve(node) {
         pushHistory();
         const mw = widget(node, "interpolation");
         if (mw) mw.value = def.mode;
-        state.points = fitCurve(def.fn, p.sMin, p.sMax, { mode: def.mode });
+        state.points = fitCurve(def.fn, p.sMin, p.sMax, { mode: def.mode, steps: p.steps, endZero: p.endZero });
         selected = -1;
         commit();
     };
@@ -538,9 +541,7 @@ function setupSigmaCurve(node) {
         const old = b.textContent; b.textContent = text;
         setTimeout(() => { b.textContent = old; }, 900);
     }
-    function parseList(text) {
-        return String(text || "").replace(/[\[\]()tensor]/g, " ").split(/[\s,;]+/).map(Number).filter(Number.isFinite);
-    }
+    const parseList = parseSigmaList;
     function importSigmas(values) {
         const p = params();
         let vals = values.slice();
@@ -582,8 +583,22 @@ function setupSigmaCurve(node) {
     const ro = new ResizeObserver(() => redraw());
     ro.observe(stage);
 
+    // After a run with a model connected, adopt the model's sigma range so the graph,
+    // presets and Copy show what was actually output.
+    function applyModelRange(range) {
+        const [hi, lo] = (range || []).map(Number);
+        if (!(hi > 0) || !(lo > 0)) return;
+        let changed = false;
+        for (const [name, v] of [["sigma_max", round(hi, 6)], ["sigma_min", round(lo, 6)]]) {
+            const w = widget(node, name);
+            if (w && Math.abs(Number(w.value) - v) > 1e-9) { w.value = v; w.callback?.(v); changed = true; }
+        }
+        if (changed) { node.setDirtyCanvas(true, true); redraw(); }
+    }
+
     node._wnSigma = {
         sync,
+        applyModelRange,
         dispose() { removed = true; ro.disconnect(); if (frame) cancelAnimationFrame(frame); },
     };
     lastSerialized = null;
@@ -618,6 +633,14 @@ app.registerExtension({
         nodeType.prototype.onDrawForeground = function () {
             const r = drawFg?.apply(this, arguments);
             this._wnSigma?.sync();
+            return r;
+        };
+
+        const executed = nodeType.prototype.onExecuted;
+        nodeType.prototype.onExecuted = function (message) {
+            const r = executed?.apply(this, arguments);
+            const range = message?.wn_model_sigmas;
+            if (range) this._wnSigma?.applyModelRange(range);
             return r;
         };
 

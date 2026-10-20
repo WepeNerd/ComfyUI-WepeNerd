@@ -23,7 +23,7 @@ export function normalizePoints(points) {
     if (out.length === 1) return [[0, out[0][1]], [1, out[0][1]]];
     out[0][0] = 0;
     out[out.length - 1][0] = 1;
-    return out.slice(0, MAX_POINTS - 1).concat(out.length > MAX_POINTS ? [out[out.length - 1]] : []);
+    return out.length > MAX_POINTS ? out.slice(0, MAX_POINTS - 1).concat([out[out.length - 1]]) : out;
 }
 
 // Fritsch-Carlson monotone cubic tangents: no overshoot between control points.
@@ -121,16 +121,40 @@ export function sampleSigmas(points, steps, sigmaMax, mode = "log smooth", endAt
 }
 
 // ---- presets ---------------------------------------------------------------
-// Each returns sigma at t in 0..1 (0 = first step, 1 = last curve step).
+// Each fn returns sigma at t in 0..1 (0 = first step, 1 = last curve step) for the
+// range lo..hi. `opts` holds { steps, endZero } for schedules that, like ComfyUI's,
+// depend on the step count: their last real step is not sigma_min, so the curve is
+// fitted so its end lands on ComfyUI's last nonzero sigma for the current steps.
 
-const AYS_SDXL = [14.615, 6.315, 3.771, 2.181, 1.342, 0.862, 0.555, 0.380, 0.234, 0.113, 0.029];
+// ComfyUI's Align Your Steps noise levels (comfy_extras/nodes_align_your_steps.py).
+export const AYS_SDXL = [14.6146412293, 6.3184485287, 3.7681790315, 2.1811480769, 1.3405244945,
+    0.8620721141, 0.5550693289, 0.3798540708, 0.2332364134, 0.1114188177, 0.0291671582];
 
-function logLinear(values, t) {
-    const pos = t * (values.length - 1);
+// Log-linear interpolation through `values` at u in 0..1, like ComfyUI's loglinear_interp.
+function logLinear(values, u) {
+    const pos = clamp(u, 0, 1) * (values.length - 1);
     const i = Math.min(values.length - 2, Math.floor(pos));
     const f = pos - i;
     return Math.exp(Math.log(values[i]) * (1 - f) + Math.log(values[i + 1]) * f);
 }
+
+// Fraction of ComfyUI's schedule covered by the curve's 0..1: with a trailing zero the
+// curve's last point is ComfyUI's step steps-1 of steps (the zero is step `steps`).
+const tailScale = ({ steps = 20, endZero = true } = {}) => {
+    const n = Math.max(1, Math.round(Number(steps) || 1));
+    return endZero ? (n - 1) / n : 1;
+};
+
+// ComfyUI flow models: time_snr_shift(shift, t) over the model's 1000 timesteps, read
+// by the "simple" scheduler at table index int(i * 1000 / steps). Steps land exactly on
+// those timesteps; between steps the timestep is interpolated so the curve stays smooth.
+const flowShift = (shift) => (t, lo, hi, { steps = 20, endZero = true } = {}) => {
+    const n = Math.max(1, Math.round(Number(steps) || 1));
+    const timestep = (i) => 1 - Math.floor(i * (1000 / n)) / 1000;
+    const pos = t * (endZero ? n - 1 : n), i = Math.floor(pos), f = pos - i;
+    const u = f > 0 ? timestep(i) * (1 - f) + timestep(i + 1) * f : timestep(i);
+    return hi * shift * u / (1 + (shift - 1) * u);
+};
 
 export const PRESETS = {
     karras: { mode: "log smooth", label: "Karras", fn: (t, lo, hi) => {
@@ -138,29 +162,36 @@ export const PRESETS = {
         return (a + t * (b - a)) ** rho;
     } },
     exponential: { mode: "log smooth", label: "Exponential", fn: (t, lo, hi) => Math.exp(Math.log(hi) + t * (Math.log(lo) - Math.log(hi))) },
+    // k-diffusion get_sigmas_polyexponential: ramp = (1 - t) ** rho over log sigma.
     polyexp: { mode: "log smooth", label: "Poly-exponential (ρ 2)", fn: (t, lo, hi) => {
-        const r = t ** 2; return Math.exp(Math.log(hi) + r * (Math.log(lo) - Math.log(hi)));
+        return Math.exp((1 - t) ** 2 * (Math.log(hi) - Math.log(lo)) + Math.log(lo));
     } },
     linear: { mode: "linear", label: "Linear", fn: (t, lo, hi) => hi + t * (lo - hi) },
-    ays_sdxl: { mode: "log smooth", label: "Align Your Steps (SDXL)", fn: (t, lo, hi) => {
-        const s = logLinear(AYS_SDXL, t) / AYS_SDXL[0];
-        return lo + (s - AYS_SDXL[10] / AYS_SDXL[0]) / (1 - AYS_SDXL[10] / AYS_SDXL[0]) * (hi - lo);
+    // ComfyUI's AYS levels, mapped in log space onto lo..hi (identity at the defaults).
+    ays_sdxl: { mode: "log smooth", label: "Align Your Steps (SDXL)", stepDependent: true, fn: (t, lo, hi, opts) => {
+        const top = Math.log(AYS_SDXL[0]), bottom = Math.log(AYS_SDXL[AYS_SDXL.length - 1]);
+        const f = (Math.log(logLinear(AYS_SDXL, t * tailScale(opts))) - bottom) / (top - bottom);
+        return Math.exp(Math.log(lo) + f * (Math.log(hi) - Math.log(lo)));
     } },
-    flow3: { mode: "smooth", label: "Flow · shift 3", fn: (t, lo, hi) => {
-        const u = 1 - t, s = 3 * u / (1 + 2 * u); return lo + s * (hi - lo);
-    } },
-    flow6: { mode: "smooth", label: "Flow · shift 6", fn: (t, lo, hi) => {
-        const u = 1 - t, s = 6 * u / (1 + 5 * u); return lo + s * (hi - lo);
-    } },
+    flow3: { mode: "smooth", label: "Flow · shift 3", stepDependent: true, fn: flowShift(3) },
+    flow6: { mode: "smooth", label: "Flow · shift 6", stepDependent: true, fn: flowShift(6) },
     cosine: { mode: "smooth", label: "Cosine", fn: (t, lo, hi) => lo + (hi - lo) * (Math.cos(t * Math.PI) + 1) / 2 },
 };
 
-// Greedy fit: start from the endpoints and add the control point where the
-// smooth curve misses the preset most (error in log-sigma space) until close.
-export function fitCurve(fn, sigmaMin, sigmaMax, { mode = "log smooth", maxPoints = 8, tolerance = 0.02 } = {}) {
+export const FIT_POINTS = 12;
+export const FIT_TOLERANCE = 0.004;
+const FIT_GRID = 200;
+const FIT_SPACING = 0.015;
+
+// Greedy fit: start from the endpoints and add the control point where the curve
+// misses the target most (error in log-sigma space) until it is within `tolerance`.
+export function fitCurve(fn, sigmaMin, sigmaMax, {
+    mode = "log smooth", maxPoints = FIT_POINTS, tolerance = FIT_TOLERANCE, steps = 20, endZero = true,
+} = {}) {
     const lo = Math.max(1e-6, Math.min(sigmaMin, sigmaMax)), hi = Math.max(sigmaMin, sigmaMax, 1e-6);
-    const target = (t) => clamp(fn(t, lo, hi) / hi, 0, 1);
-    const grid = Array.from({ length: 81 }, (_, i) => i / 80);
+    const opts = { steps, endZero };
+    const target = (t) => clamp(fn(t, lo, hi, opts) / hi, 0, 1);
+    const grid = Array.from({ length: FIT_GRID + 1 }, (_, i) => i / FIT_GRID);
     const floor = lo / hi / 2;
     const err = (a, b) => Math.abs(Math.log(Math.max(a, floor)) - Math.log(Math.max(b, floor)));
     let pts = [[0, target(0)], [1, target(1)]];
@@ -168,7 +199,7 @@ export function fitCurve(fn, sigmaMin, sigmaMax, { mode = "log smooth", maxPoint
         const f = makeEvaluator(pts, mode);
         let worst = -1, worstX = 0;
         for (const x of grid) {
-            if (pts.some((p) => Math.abs(p[0] - x) < 0.035)) continue;
+            if (pts.some((p) => Math.abs(p[0] - x) < FIT_SPACING)) continue;
             const e = err(f(x), target(x));
             if (e > worst) { worst = e; worstX = x; }
         }
@@ -176,6 +207,17 @@ export function fitCurve(fn, sigmaMin, sigmaMax, { mode = "log smooth", maxPoint
         pts = normalizePoints([...pts, [worstX, target(worstX)]]);
     }
     return pts.map(([x, y]) => [round(x), round(y)]);
+}
+
+// Numbers from pasted text: "14.6, 6.3 … 0", one per line, or a printed
+// tensor([1.4615e+01, …]). Words such as tensor/device/dtype are skipped.
+export function parseSigmaList(text) {
+    return String(text || "")
+        .replace(/[\[\](){}]/g, " ")
+        .split(/[\s,;]+/)
+        .filter((tok) => /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(tok))
+        .map(Number)
+        .filter(Number.isFinite);
 }
 
 export function round(v, digits = 6) {
