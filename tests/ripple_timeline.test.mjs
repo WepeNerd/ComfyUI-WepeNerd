@@ -77,8 +77,8 @@ test("canvas size and short edge match ripple_core", () => {
     assert.equal(canvasSize(0, 10, 384), null);
 });
 
-test("two default markers and length changes", () => {
-    assert.deepEqual(defaultMarkers(107).map((m) => m.frame), [26, 80]);
+test("one default marker and length changes", () => {
+    assert.deepEqual(defaultMarkers().map((m) => m.frame), [0]);
     const markers = [{ frame: 26, edited: "", edited_at: null }, { frame: 80, edited: "e.png", edited_at: 80 }];
     assert.deepEqual(rescaleMarkers(markers, 107, 39).map((m) => m.frame), [9, 38]);
     assert.deepEqual(rescaleMarkers(markers, 107, 124).map((m) => m.frame), [30, 80]);

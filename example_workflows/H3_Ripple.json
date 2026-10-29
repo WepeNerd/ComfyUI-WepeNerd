@@ -11,7 +11,7 @@
    ],
    "size": [
     640,
-    1060
+    1110
    ],
    "flags": {},
    "order": 0,
@@ -49,7 +49,7 @@
      "resolution": "384",
      "window_start": 0,
      "edit_frame": 0,
-     "markers": "[{\"frame\":26,\"edited\":\"\",\"edited_at\":null},{\"frame\":80,\"edited\":\"\",\"edited_at\":null}]"
+     "markers": "[{\"frame\":0,\"edited\":\"\",\"edited_at\":null}]"
     }
    },
    "widgets_values": [
@@ -58,9 +58,9 @@
     "384",
     0,
     0,
-    "[{\"frame\":26,\"edited\":\"\",\"edited_at\":null},{\"frame\":80,\"edited\":\"\",\"edited_at\":null}]"
+    "[{\"frame\":0,\"edited\":\"\",\"edited_at\":null}]"
    ],
-   "title": "1 · Ripple Clip: pick the shot, edit two frames"
+   "title": "1 · Ripple Clip: pick the shot, edit a frame"
   },
   {
    "id": 2,
@@ -622,7 +622,7 @@
     "Node name for S&R": "MarkdownNote"
    },
    "widgets_values": [
-    "## H3 Ripple\n\nEdit **two frames** of a shot in any image editor; H3 carries the edit through every frame of the shot.\n\n1. **Ripple Clip** — upload a video. Drag the **blue window** (the frames H3 generates) to the shot you want.\n   Move the two **numbered markers** to frames where the subject is clearly visible.\n2. On each card, **Download frame**, make the **same change** in both images (keep the size), then\n   **upload**, **drop** the file on the card, or select the node and **Ctrl+V** a copied image.\n3. **Run.** Ripple Output saves `ripple/edit_*.mp4` (with the source audio) and `ripple/edit_compare_*.mp4`\n   (source | result, yellow bar = edited frame).\n\nChanging only the edits re-uses the decoded clip, the encoded prompt and the encoded source,\nso a re-run goes almost straight to sampling.\n\n**Keyboard** (node selected): ← / → step the selected marker · Shift+← / → move the window · Tab next marker.\n\n**In-graph editing:** connect *frames_to_edit* to an editor and its output to *edited_images* on Ripple Apply\n(one image per marker, in time order). Connected images override uploaded edits.\n\n### Tips\n- FL2VA model + the Ripple LoRA at strength 1, CFG 1. Leave the prompt on Ripple Apply as it is.\n- Use two edited frames and make the same change in both; one edited frame works less reliably.\n- H3 works at 24 fps. Other frame rates are resampled, so some native frames can't be picked.\n\nThe **8-step accelerator** loader is bypassed: enable it (Ctrl+B) and set steps to 8 for faster renders.\n"
+    "## H3 Ripple\n\nEdit **a frame** of a shot in any image editor; H3 carries the edit through every frame of the shot.\n\n1. **Ripple Clip** — upload a video. Drag the **blue window** (the frames H3 generates) to the shot you want.\n   Move the **marker** to a frame where the subject is clearly visible.\n2. **Download frame**, edit it (keep the size), then **upload**, **drop** the file on the card,\n   or select the node and **Ctrl+V** a copied image.\n3. **Run.** Ripple Output saves `ripple/edit_*.mp4` (with the source audio) and `ripple/edit_compare_*.mp4`\n   (source | result, yellow bar = edited frame).\n\nChanging only the edits re-uses the decoded clip, the encoded prompt and the encoded source,\nso a re-run goes almost straight to sampling.\n\n**Keyboard** (node selected): ← / → step the selected marker · Shift+← / → move the window · Tab next marker.\n\n**In-graph editing:** connect *frames_to_edit* to an editor and its output to *edited_images* on Ripple Apply\n(one image per marker, in time order). Connected images override uploaded edits.\n\n### Tips\n- FL2VA model + the Ripple LoRA at strength 1, CFG 1. Leave the prompt on Ripple Apply as it is.\n- When one frame isn't enough (the subject turns, or the edit must hold at a later moment), **+ Add frame**\n  and give the new frame exactly the same change. Up to four edited frames.\n- H3 works at 24 fps. Other frame rates are resampled, so some native frames can't be picked.\n\nThe **8-step accelerator** loader is bypassed: enable it (Ctrl+B) and set steps to 8 for faster renders.\n"
    ],
    "title": "Read me"
   }
@@ -767,12 +767,12 @@
  ],
  "groups": [
   {
-   "title": "1 · Pick the shot and edit two frames",
+   "title": "1 · Pick the shot and edit a frame",
    "bounding": [
     -20,
     -60,
     680,
-    1140
+    1200
    ],
    "color": "#3f789e"
   },

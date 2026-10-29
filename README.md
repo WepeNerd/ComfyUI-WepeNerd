@@ -23,7 +23,7 @@ H3 Ripple video edit propagation for ComfyUI.
 | **Sigma Curve** | Draw a SIGMAS schedule by dragging points on a graph, with presets and exact numeric entry |
 | **Slider** | Map a compact FLOAT control to your preferred strength range |
 | **Load LoRA Masked · Beta** | Apply spatial LoRA/LoKr regions to native Krea2 models |
-| **H3 Ripple** | Edit two frames of a shot in any image editor; MiniMax H3 carries the edit through the whole shot |
+| **H3 Ripple** | Edit a frame of a shot in any image editor; MiniMax H3 carries the edit through the whole shot |
 
 ## Installation
 
@@ -88,8 +88,9 @@ workflow.
 - **H3 Ripple:** open the [H3 Ripple workflow](example_workflows/H3_Ripple.json) (also under
   **Templates › ComfyUI-WepeNerd**). It needs the MiniMax H3 FL2VA model, its text encoder and video
   VAE, and the `H3_Ripple_v1` LoRA. In **Ripple Clip**, upload a video, drag the blue window to the shot
-  and move the two numbered markers to clear views of the subject. **Download frame** on each card, make
-  the same change in both images, then upload, drop or paste (Ctrl+V) them onto their cards and **Run**.
+  and move the marker to the frame you want to edit. **Download frame**, edit it, then upload, drop or
+  paste (Ctrl+V) it onto its card and **Run**. When an edit needs another anchor (say, a view of the
+  subject the first frame doesn't show), **+ Add frame** and give the second frame the same change.
   Ripple Output saves the shot with its source audio and a source | result comparison. Re-running with
   new edits skips the video decode, prompt encoding and source encoding.
   See [H3 Ripple](docs/nodes.md#h3-ripple) for all controls.

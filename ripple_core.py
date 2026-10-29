@@ -26,15 +26,13 @@ DEFAULT_PROMPT = (
     "stays consistent through the whole video. Keep the guide video's motion, timing, camera movement, composition "
     "and all unedited content unchanged."
 )
-# Edited frames per window: two is the recommended number; up to four are accepted.
-RECOMMENDED_MARKERS = 2
+# Edited frames per window: one by default; add more when an edit needs another anchor.
 MAX_MARKERS = 4
 
 
-def default_markers(length: int = DEFAULT_LENGTH) -> list[dict]:
-    """Two markers, a quarter and three quarters into the window."""
-    return [{"frame": length // 4, "edited": "", "edited_at": None},
-            {"frame": (3 * length) // 4, "edited": "", "edited_at": None}]
+def default_markers() -> list[dict]:
+    """One marker on the window's first frame."""
+    return [{"frame": 0, "edited": "", "edited_at": None}]
 
 
 DEFAULT_MARKERS_JSON = json.dumps(default_markers(), separators=(",", ":"))
@@ -132,8 +130,6 @@ def parse_markers(markers, edit_frame: int, length: int) -> tuple[list[dict], li
     if len(out) > MAX_MARKERS:
         notes.append(f"Only the first {MAX_MARKERS} edited frames are used.")
         out = out[:MAX_MARKERS]
-    if len(out) > RECOMMENDED_MARKERS:
-        notes.append(f"{len(out)} edited frames: two usually give the most consistent result.")
     return out, notes
 
 

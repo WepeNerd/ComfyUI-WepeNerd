@@ -310,9 +310,10 @@ class WN_RippleClip:
         "The source audio of the window (None if the video has no audio).",
     )
     DESCRIPTION = (
-        "Load a video, drag the blue window (the frames H3 will generate) along the timeline and move the two "
-        "numbered markers to the frames you want to edit. Download each frame, make the same change in both, "
-        "then upload, drop or paste the edits onto their cards. Arrow keys step the selected marker; Shift+arrows "
+        "Load a video, drag the blue window (the frames H3 will generate) along the timeline and move the "
+        "marker to the frame you want to edit. Download the frame, edit it, then upload, drop or paste the edit "
+        "onto its card. Add a second marker when the edit needs another anchor (for example a view the first "
+        "frame doesn't show) and give it the same change. Arrow keys step the selected marker; Shift+arrows "
         "move the window; Tab switches markers; Ctrl+V pastes an edit onto the selected marker."
     )
 
@@ -454,8 +455,6 @@ class WN_RippleApply:
             keyframes_edit.append({"resolved_frame_index": frame, "latent": vae.encode(edited[..., :3])})
         if unchanged == len(markers):
             notes.append("No edited frame differs from the source: the result will look like the original shot.")
-        if len(markers) < rc.RECOMMENDED_MARKERS:
-            notes.append("One edited frame: two carry an edit more reliably. Add a second marker for best results.")
 
         latent, frame_count = _empty_av_latent(width, height, length)
         if frame_count != length:

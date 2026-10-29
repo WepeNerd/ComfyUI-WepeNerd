@@ -204,12 +204,13 @@ class ClipTest(RippleTest):
         self.assertIsNone(audio)
         self.assertIn("Window moved", " ".join(out["ui"]["text"]))
 
-    def test_new_nodes_start_with_two_markers(self):
+    def test_new_nodes_start_with_one_marker(self):
         default = ripple.WN_RippleClip.INPUT_TYPES()["optional"]["markers"][1]["default"]
-        self.assertEqual([m["frame"] for m in json.loads(default)], [26, 80])
+        self.assertEqual([m["frame"] for m in json.loads(default)], [0])
         write_numbered(self.root / "v.mkv", 24 * 6, 24)
         out = ripple.WN_RippleClip().select("v.mkv", rc.DEFAULT_LENGTH_LABEL, rc.DEFAULT_RESOLUTION, 0, 0, default)
-        self.assertEqual(out["ui"]["binding"][2], [26, 80])
+        self.assertEqual(out["ui"]["binding"][2], [0])
+        self.assertEqual(len(out["ui"]["text"]), 1)
 
     def test_one_frame_per_marker_in_time_order(self):
         write_numbered(self.root / "v.mkv", 24 * 10, 24, size=(192, 108))
@@ -324,11 +325,12 @@ class ApplyTest(RippleTest):
         text = " ".join(ripple.WN_RippleApply().apply(FakeClip(), FakeVAE(), context, "prompt")["ui"]["text"])
         self.assertIn("Frame 10: its edit was made for another frame", text)
 
-    def test_a_single_edited_frame_suggests_a_second(self):
+    def test_a_single_edited_frame_needs_no_note(self):
         context = self.ripple_context([{"frame": 3, "edited": ""}])
         out = ripple.WN_RippleApply().apply(FakeClip(), FakeVAE(), context, "prompt",
                                             edited_images=torch.rand(1, 64, 96, 3))
-        self.assertTrue(any("Add a second marker" in t for t in out["ui"]["text"]))
+        self.assertEqual(out["ui"]["text"][0][:16], "1 edited frame o")
+        self.assertEqual([k["resolved_frame_index"] for k in out["result"][0][0][1]["minimax_keyframes"]], [0, 3])
 
     def test_attached_edit_must_stay_inside_the_input_folder(self):
         with self.assertRaisesRegex(ValueError, "not found"):

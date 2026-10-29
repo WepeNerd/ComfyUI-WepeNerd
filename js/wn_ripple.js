@@ -4,7 +4,7 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import {
-    FPS, MAX_MARKERS, RECOMMENDED_MARKERS, aspectMismatch, canvasSize, fitWindow,
+    FPS, MAX_MARKERS, aspectMismatch, canvasSize, fitWindow,
     gridFrames, gridIndexAt, hitMarker, hitTest, makeLayout, moveMarker, parseLength, parseMarkers, rescaleMarkers,
     seekTime, shortEdge, suggestFrame, tickStep, timecode,
 } from "./ripple_timeline.mjs";
@@ -325,7 +325,7 @@ function installRipple(node) {
         if (!state.info || state.info.error) {
             content.append(el("div", { class: "ripple-empty" },
                 el("strong", {}, state.info?.error ? "Video unavailable" : "Start with a short video"),
-                el("span", {}, state.info?.error ?? "Upload a clip above, choose a shot, then edit two frames.")));
+                el("span", {}, state.info?.error ?? "Upload a clip above, choose a shot, then edit a frame.")));
             resize();
             return;
         }
@@ -347,12 +347,11 @@ function installRipple(node) {
         } }, "+ Add frame");
         add.disabled = now.markers.length >= MAX_MARKERS;
         content.append(el("div", { class: "ripple-section" },
-            el("div", {}, el("strong", {}, "2. Edit your frames"),
-                now.markers.length < RECOMMENDED_MARKERS
-                    ? el("span", { class: "ripple-warning" }, "Add a second frame for the most consistent result")
-                    : el("span", { class: "ripple-meta" }, "Two frames recommended · give both the same look")), add));
+            el("div", {}, el("strong", {}, now.markers.length > 1 ? "2. Edit your frames" : "2. Edit your frame"),
+                el("span", { class: "ripple-meta" }, now.markers.length > 1 ? "Give every edited frame the same change"
+                    : "Add a frame only if the edit needs another anchor")), add));
         for (const index of state.thumbs.keys()) if (index >= now.markers.length) state.thumbs.delete(index);
-        const cards = el("div", { class: "ripple-frames" });
+        const cards = el("div", { class: `ripple-frames${now.markers.length === 1 ? " is-single" : ""}` });
         now.markers.forEach((marker, index) => {
             const absolute = now.start + marker.frame;
             const stale = marker.edited && marker.edited_at != null && marker.edited_at !== absolute;
@@ -428,8 +427,9 @@ function installRipple(node) {
         content.append(el("div", { class: "ripple-next", "aria-live": "polite" },
             el("strong", {}, "3. Preview your result"),
             el("span", { class: moved ? "ripple-warning" : "ripple-meta" }, moved ? "Check moved frames before running."
+                : now.markers.length === 1 ? (attached ? "Edit attached. Use ComfyUI Run to generate the selected shot."
+                    : "Attach your edit, then use ComfyUI Run.")
                 : `${attached} of ${now.markers.length} edits attached. ${attached === now.markers.length ? "Use ComfyUI Run to generate the selected shot." : "Attach your edits, then use ComfyUI Run."}`)));
-        if (now.markers.length > RECOMMENDED_MARKERS) content.append(el("div", { class: "ripple-meta" }, "Two edited frames usually give the most consistent result."));
         if (state.panelError) content.append(el("div", { class: "ripple-warning", role: "alert" }, state.panelError));
         const advanced = el("details", { class: "ripple-advanced" }, el("summary", {}, "Advanced · editor connections & shortcuts"));
         advanced.open = state.advanced;

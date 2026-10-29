@@ -3,10 +3,9 @@
 ## Unreleased
 
 - Add H3 Ripple (from the Experimental review build): **Ripple Clip**, **Ripple Apply** and
-  **Ripple Output** propagate edits made to two frames of a shot through the whole shot with
+  **Ripple Output** propagate an edit made to one frame (or a few) of a shot through the whole shot with
   MiniMax H3 FL2VA and the `H3_Ripple_v1` LoRA, plus an example workflow. Compared with the
   review build:
-  - New nodes start with two markers; Apply suggests a second one when only one is used.
   - Edits can be dropped onto a marker card or pasted with Ctrl+V, not only uploaded; a
     pasted image no longer becomes a stray Load Image node. Each card warns at once when
     an edit's aspect ratio differs from the frame.

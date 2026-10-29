@@ -30,6 +30,8 @@
 .wn-ripple-panel .ripple-transport { padding-bottom: 12px; border-bottom: 1px solid var(--ripple-border); }
 .wn-ripple-panel .ripple-actions { display: flex; gap: 5px; flex-wrap: wrap; }
 .wn-ripple-panel .ripple-frames { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.wn-ripple-panel .ripple-frames.is-single { grid-template-columns: minmax(0, 1fr); }
+.wn-ripple-panel .ripple-frames.is-single .ripple-pair img, .wn-ripple-panel .ripple-frames.is-single .ripple-placeholder { height: 150px; }
 .wn-ripple-panel .ripple-frame { min-width: 0; padding: 10px; border: 1px solid var(--ripple-border); border-radius: 9px; }
 .wn-ripple-panel .ripple-frame.is-active { border-color: #75a6ef; background: color-mix(in srgb, #75a6ef 6%, transparent); }
 .wn-ripple-panel .ripple-frame.is-drop { border-style: dashed; border-color: #5fd0a0; background: color-mix(in srgb, #5fd0a0 10%, transparent); }
@@ -51,4 +53,5 @@
 @container (max-width: 440px) {
     .wn-ripple-panel .ripple-frames { grid-template-columns: minmax(0, 1fr); }
     .wn-ripple-panel .ripple-pair img, .wn-ripple-panel .ripple-placeholder { height: 95px; }
+    .wn-ripple-panel .ripple-frames.is-single .ripple-pair img, .wn-ripple-panel .ripple-frames.is-single .ripple-placeholder { height: 115px; }
 }

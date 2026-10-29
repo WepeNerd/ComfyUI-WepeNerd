@@ -277,8 +277,9 @@ The frames are copied exactly, keeping their size, channels, dtype and device.
 
 ## H3 Ripple
 
-Edit two frames of a shot in any image editor and MiniMax H3 re-renders the shot with the edit
-carried through every frame, before, between and after the edited ones. Three nodes under
+Edit a frame of a shot in any image editor and MiniMax H3 re-renders the shot with the edit
+carried through every frame before and after it. When one frame isn't enough, add more edited
+frames (up to four); the edit is then carried before, between and after them. Three nodes under
 **WepeNerd/H3 Ripple**, used together in the [example workflow](../example_workflows/H3_Ripple.json)
 (also listed under **Templates › ComfyUI-WepeNerd**).
 
@@ -296,8 +297,8 @@ the same frames.
 - **Blue window:** the frames H3 generates. Drag it, or click the track to centre it there.
   `length` picks how many frames (17k + 5); a video shorter than the window gets the longest
   length that fits. Nothing is padded or looped.
-- **Numbered markers:** the frames you edit. New nodes start with two, a quarter and three
-  quarters into the window. Drag a marker, or select the node and use ← / → (Shift moves the
+- **Numbered markers:** the frames you edit. New nodes start with one, on the window's first
+  frame. Drag a marker, or select the node and use ← / → (Shift moves the
   window, Shift+Alt by one second; Tab switches markers). **+ Add frame** adds up to four.
 - **Cards:** one per marker, with the exact source frame at the generation size. **Download
   frame**, edit it, then **Upload edit**, drop the image onto the card, or select the node and
@@ -323,8 +324,8 @@ own as a guide at its frame, as chained **Add Guide for MiniMax H3** nodes would
 from the cards, or from `edited_images` (one per marker, in time order), which take precedence.
 
 Apply reports, per marker, whether the image matches its source frame (✓), and warns when an image
-looks made from another frame, was made before its marker moved, is unchanged from the source (that
-moment is then kept as it is), or when only one marker is used. A marker without an edit stops the
+looks made from another frame, was made before its marker moved, or is unchanged from the source
+(that moment is then kept as it is). A marker without an edit stops the
 run before anything is encoded.
 
 Re-running after changing only the edits reuses the encoded prompt, so the 32B text encoder does not
@@ -341,8 +342,9 @@ The output covers the selected shot only; it does not splice the shot back into 
 
 ### Tips
 
-- Use two edited frames, at clear views of the subject, and make exactly the same change in both.
-  One edited frame works but carries the edit less reliably.
+- Start with one edited frame where the subject is clearly visible.
+- Add a second edited frame when the edit needs another anchor: a side of the subject the first frame
+  doesn't show, or an edit that should hold at a later moment. Give it exactly the same change.
 - Keep the edited images at the frame's size, or at least its aspect ratio.
 - Keep the seed fixed when comparing different edits of the same shot.
 

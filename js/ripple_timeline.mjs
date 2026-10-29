@@ -95,7 +95,6 @@ export function tickStep(totalSeconds, width) {
 // ---- several edited-frame markers ----------------------------------------------------------
 
 export const MAX_MARKERS = 4;
-export const RECOMMENDED_MARKERS = 2;
 
 // Parse the node's markers JSON; falls back to one marker at editFrame. Sorted, unique, clamped.
 export function parseMarkers(json, editFrame, length) {
@@ -114,10 +113,9 @@ export function parseMarkers(json, editFrame, length) {
     return out.slice(0, MAX_MARKERS);
 }
 
-// Two markers a quarter and three quarters into the window (ripple_core.default_markers).
-export function defaultMarkers(length) {
-    return [{ frame: Math.floor(length / 4), edited: "", edited_at: null },
-        { frame: Math.floor((3 * length) / 4), edited: "", edited_at: null }];
+// One marker on the window's first frame (ripple_core.default_markers).
+export function defaultMarkers() {
+    return [{ frame: 0, edited: "", edited_at: null }];
 }
 
 // After a length change: markers without an edit keep their relative place in the window; markers with an
