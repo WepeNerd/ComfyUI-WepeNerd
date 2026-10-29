@@ -1,12 +1,9 @@
 // H3 Ripple timeline rules (mirror of ripple_core.py). Pure functions, testable with node --test.
 
 export const FPS = 24;
-export const TRAINED_LENGTHS = [22, 39, 56, 73, 90, 107, 124];
-// Longest window each short edge trained on (0 = never trained at that size).
-export const TRAINED_MAX_LENGTH = { 352: 124, 384: 107, 544: 56, 768: 0 };
 const CANVAS_MULTIPLE = 32;
 
-// Short edge from a resolution label such as "384 (trained up to 107 frames)".
+// Short edge from a resolution value such as "384".
 export function shortEdge(label) {
     const edge = parseInt(String(label), 10);
     return Number.isFinite(edge) && edge > 0 ? edge : 384;
@@ -18,15 +15,6 @@ export function canvasSize(width, height, edge) {
     const round = (value) => Math.max(CANVAS_MULTIPLE, Math.round(value / CANVAS_MULTIPLE) * CANVAS_MULTIPLE);
     return width >= height ? { width: round(edge * width / height), height: edge }
         : { width: edge, height: round(edge * height / width) };
-}
-
-// Same rule as ripple_core.combination_note: a warning past what the LoRA trained on, else null.
-export function combinationNote(resolution, length) {
-    const edge = shortEdge(resolution);
-    const trained = TRAINED_MAX_LENGTH[edge] ?? 0;
-    if (!trained) return `${edge}p is untested with Ripple; 384 is the safest size.`;
-    if (length > trained) return `${edge}p trained up to ${trained} frames; ${length} frames is untested there and needs much more memory and time.`;
-    return null;
 }
 
 // True when an edited image's aspect differs from the frame's by more than 1% (it would be centre-cropped).
@@ -107,7 +95,7 @@ export function tickStep(totalSeconds, width) {
 // ---- several edited-frame markers ----------------------------------------------------------
 
 export const MAX_MARKERS = 4;
-export const TRAINED_MARKERS = 2;
+export const RECOMMENDED_MARKERS = 2;
 
 // Parse the node's markers JSON; falls back to one marker at editFrame. Sorted, unique, clamped.
 export function parseMarkers(json, editFrame, length) {

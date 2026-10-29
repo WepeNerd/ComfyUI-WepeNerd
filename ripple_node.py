@@ -3,7 +3,7 @@
 Ripple Clip   - load a video, choose the generation window and the frames to edit on a timeline
                 ("Add edited frame" adds markers). Each marker can carry an attached edited image.
                 Outputs the exact frames to edit and a RIPPLE context (window frames, markers, size, audio).
-Ripple Apply  - builds the H3 FL2VA conditioning the Ripple LoRA was trained on: prompt-only text,
+Ripple Apply  - builds the H3 FL2VA conditioning the Ripple LoRA expects: prompt-only text,
                 the original window as a guide at frame 0 and each edited image as its own
                 single-image guide at its frame (the same keyframes chained Add Guide nodes make).
 Ripple Output - saves the generated shot with its source audio and a source | result comparison
@@ -322,7 +322,7 @@ class WN_RippleClip:
             "required": {
                 "video": (list_videos(), {"video_upload": True}),
                 "length": (rc.LENGTH_LABELS, {"default": rc.DEFAULT_LENGTH_LABEL,
-                           "tooltip": "Frames H3 generates (24 fps). The Ripple LoRA trained on 22 to 124."}),
+                           "tooltip": "Frames H3 generates (24 fps)."}),
                 "resolution": (list(rc.RESOLUTIONS), {"default": rc.DEFAULT_RESOLUTION,
                                "tooltip": "Short edge of the generation; the long edge follows the video's aspect."}),
                 "window_start": ("INT", {"default": 0, "min": 0, "max": 10_000_000,
@@ -337,12 +337,16 @@ class WN_RippleClip:
         }
 
     @classmethod
-    def VALIDATE_INPUTS(cls, video, length):
+    def VALIDATE_INPUTS(cls, video, length, resolution):
+        # length and resolution are checked here rather than against the lists, so workflows saved with
+        # older labels ("384 (...)") keep working.
         try:
             video_path(video)
             rc.parse_length(length)
         except ValueError as error:
             return str(error)
+        if rc.short_edge(resolution) not in rc.RESOLUTIONS.values():
+            return f"Unknown resolution: {resolution}"
         return True
 
     @classmethod
@@ -360,9 +364,6 @@ class WN_RippleClip:
         notes += loaded["notes"]
         marker_list, marker_notes = rc.parse_markers(markers, min(edit, frames_n - 1), frames_n)
         notes += marker_notes
-        combination = rc.combination_note(resolution, frames_n)
-        if combination:
-            notes.append(combination)
         edits = [marker["frame"] for marker in marker_list]
         ripple = {
             "window": window, "markers": marker_list, "edit_frame": edits[0], "length": frames_n, "width": width,
@@ -385,7 +386,7 @@ class WN_RippleApply:
         "Empty H3 audio-video latent for the window.",
     )
     DESCRIPTION = (
-        "Builds the conditioning the H3 Ripple LoRA was trained with: the original window as a guide plus one "
+        "Builds the conditioning the H3 Ripple LoRA expects: the original window as a guide plus one "
         "guide per edited frame. Edited images come from the edits attached on Ripple Clip, or from the "
         "edited_images input (one image per marker, in time order), which takes precedence. Use the FL2VA model "
         "with the Ripple LoRA, a BasicGuider (CFG 1) and any H3 sampler. The default prompt works for every edit. "
@@ -453,9 +454,8 @@ class WN_RippleApply:
             keyframes_edit.append({"resolved_frame_index": frame, "latent": vae.encode(edited[..., :3])})
         if unchanged == len(markers):
             notes.append("No edited frame differs from the source: the result will look like the original shot.")
-        if len(markers) < rc.TRAINED_MARKERS:
-            notes.append("One edited frame: H3_Ripple_v1 finished training with two, which carry an edit more "
-                         "reliably. Add a second marker for best results.")
+        if len(markers) < rc.RECOMMENDED_MARKERS:
+            notes.append("One edited frame: two carry an edit more reliably. Add a second marker for best results.")
 
         latent, frame_count = _empty_av_latent(width, height, length)
         if frame_count != length:

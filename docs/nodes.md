@@ -282,8 +282,8 @@ carried through every frame, before, between and after the edited ones. Three no
 **WepeNerd/H3 Ripple**, used together in the [example workflow](../example_workflows/H3_Ripple.json)
 (also listed under **Templates › ComfyUI-WepeNerd**).
 
-**Requirements:** the MiniMax H3 **FL2VA** model (`minimax_h3_fl2va_pruned_int8_convrot` is what
-training used), the `minimax` text encoder, the H3 video VAE, and the **H3_Ripple_v1** LoRA at
+**Requirements:** the MiniMax H3 **FL2VA** model (for example `minimax_h3_fl2va_pruned_int8_convrot`),
+the `minimax` text encoder, the H3 video VAE, and the **H3_Ripple_v1** LoRA at
 strength 1. Sample with a BasicGuider (CFG 1); the example uses `res_multistep`, `simple`, 20 steps.
 The Ostris training adapter is training-only; never load it here.
 
@@ -306,7 +306,6 @@ the same frames.
 - Warnings appear on the card when an edit's aspect ratio differs from the frame (it will be
   centre-cropped) and when the marker or window has moved since the edit was attached.
 - `resolution` is the short edge; the long edge follows the video's aspect, rounded to 32.
-  The node flags pairs outside training (below).
 - **Play shot** loops the window in the preview without moving anything.
 
 | Output | Description |
@@ -318,7 +317,7 @@ the same frames.
 
 ### Ripple Apply
 
-Builds the conditioning the LoRA trained on: the fixed text prompt (leave it; the edit comes from
+Builds the conditioning the LoRA expects: the fixed text prompt (leave it; the edit comes from
 the images), the whole original window as a guide at frame 0, and each edited frame encoded on its
 own as a guide at its frame, as chained **Add Guide for MiniMax H3** nodes would. Edited images come
 from the cards, or from `edited_images` (one per marker, in time order), which take precedence.
@@ -340,19 +339,12 @@ or nothing; `filename_prefix` defaults to `ripple/edit` (the comparison adds `_c
 outputs `images`, `audio`, `frame_rate` (24) and `comparison` for other savers or post-processing.
 The output covers the selected shot only; it does not splice the shot back into the full video.
 
-### What H3_Ripple_v1 was trained on
+### Tips
 
-| Short edge | Lengths | Notes |
-|---|---|---|
-| 384 (672×384, 384×672) | 22–107 frames | Default; up to 4.46 s. |
-| 352 (640×352) | 124 frames | 5.17 s. |
-| 544 (960×544, 544×960) | 22–56 frames | More detail, shorter shots. |
-| 768 | — | Untested. |
-
-Training ended with exactly two edited frames per example, chosen from frames where the edit is
-visible, plus reverse (undo) and identity (unchanged frame) pairs. One edited frame still works but
-carries the edit less reliably; three or four are untested. Results depend on the shot: test with
-your own footage and keep the seed fixed when comparing edits.
+- Use two edited frames, at clear views of the subject, and make exactly the same change in both.
+  One edited frame works but carries the edit less reliably.
+- Keep the edited images at the frame's size, or at least its aspect ratio.
+- Keep the seed fixed when comparing different edits of the same shot.
 
 ## Drag Resolution
 

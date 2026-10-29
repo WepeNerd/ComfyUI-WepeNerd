@@ -65,22 +65,16 @@ test("marker hit test and collision-free moves", () => {
     assert.equal(moveMarker([10, 20], 0, 200, 107), 106);
 });
 
-import { aspectMismatch, canvasSize, combinationNote, defaultMarkers, rescaleMarkers, shortEdge } from "../js/ripple_timeline.mjs";
+import { aspectMismatch, canvasSize, defaultMarkers, rescaleMarkers, shortEdge } from "../js/ripple_timeline.mjs";
 
 test("canvas size and short edge match ripple_core", () => {
-    assert.equal(shortEdge("384 (trained up to 107 frames)"), 384);
+    assert.equal(shortEdge("384"), 384);
+    assert.equal(shortEdge("544 (older label)"), 544);
     assert.equal(shortEdge("nonsense"), 384);
     assert.deepEqual(canvasSize(1920, 1080, 384), { width: 672, height: 384 });
     assert.deepEqual(canvasSize(1080, 1920, 544), { width: 544, height: 960 });
     assert.deepEqual(canvasSize(1280, 704, 352), { width: 640, height: 352 });
     assert.equal(canvasSize(0, 10, 384), null);
-});
-
-test("untrained size/length pairs are flagged", () => {
-    assert.equal(combinationNote("384 (trained up to 107 frames)", 107), null);
-    assert.equal(combinationNote("352 (trained up to 124 frames)", 124), null);
-    assert.match(combinationNote("544 (trained up to 56 frames)", 107), /trained up to 56 frames/);
-    assert.match(combinationNote("768 (untested)", 22), /untested/);
 });
 
 test("two default markers and length changes", () => {

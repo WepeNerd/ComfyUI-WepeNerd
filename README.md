@@ -92,7 +92,7 @@ workflow.
   the same change in both images, then upload, drop or paste (Ctrl+V) them onto their cards and **Run**.
   Ripple Output saves the shot with its source audio and a source | result comparison. Re-running with
   new edits skips the video decode, prompt encoding and source encoding.
-  See [H3 Ripple](docs/nodes.md#h3-ripple) for the trained sizes and lengths.
+  See [H3 Ripple](docs/nodes.md#h3-ripple) for all controls.
 
 See the [node guide](docs/nodes.md) for controls, inputs, outputs, and limitations.
 

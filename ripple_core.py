@@ -14,34 +14,25 @@ import numpy as np
 
 FPS = 24
 CANVAS_MULTIPLE = 32
-# Lengths H3_Ripple_v1 trained on: 22 ... 107 frames, plus 124 at 640x352. Longer is allowed but untested.
-TRAINED_LENGTHS = (22, 39, 56, 73, 90, 107, 124)
-EXTRA_LENGTHS = (141, 158, 175, 192)
-LENGTHS = TRAINED_LENGTHS + EXTRA_LENGTHS
+# Window lengths offered (17k + 5 frames at 24 fps).
+LENGTHS = (22, 39, 56, 73, 90, 107, 124, 141, 158, 175, 192)
 DEFAULT_LENGTH = 107
-# Short edge -> what training saw at that size.
-RESOLUTIONS = {
-    "352 (trained up to 124 frames)": 352,
-    "384 (trained up to 107 frames)": 384,
-    "544 (trained up to 56 frames)": 544,
-    "768 (untested)": 768,
-}
-# Longest window each short edge trained on (0 = never trained at that size).
-TRAINED_MAX_LENGTH = {352: 124, 384: 107, 544: 56, 768: 0}
-DEFAULT_RESOLUTION = "384 (trained up to 107 frames)"
+# Short edge of the generation; the long edge follows the video's aspect.
+RESOLUTIONS = {"352": 352, "384": 384, "544": 544, "768": 768}
+DEFAULT_RESOLUTION = "384"
 DEFAULT_PROMPT = (
     "Edit propagation: each edited frame shows exactly how that moment of the video should look after the edit. "
     "Apply the same changes to every frame of the clip, before, between and after the edited frames, so the edit "
     "stays consistent through the whole video. Keep the guide video's motion, timing, camera movement, composition "
     "and all unedited content unchanged."
 )
-# Edited frames per window: H3_Ripple_v1 finished training with exactly two; one still works, more is untested.
-TRAINED_MARKERS = 2
+# Edited frames per window: two is the recommended number; up to four are accepted.
+RECOMMENDED_MARKERS = 2
 MAX_MARKERS = 4
 
 
 def default_markers(length: int = DEFAULT_LENGTH) -> list[dict]:
-    """Two markers, a quarter and three quarters into the window: the layout the LoRA trained on."""
+    """Two markers, a quarter and three quarters into the window."""
     return [{"frame": length // 4, "edited": "", "edited_at": None},
             {"frame": (3 * length) // 4, "edited": "", "edited_at": None}]
 
@@ -50,7 +41,7 @@ DEFAULT_MARKERS_JSON = json.dumps(default_markers(), separators=(",", ":"))
 
 
 def short_edge(resolution) -> int:
-    """Short edge from a resolution label (or a plain number)."""
+    """Short edge from a resolution value; older labels such as "384 (...)" still read as 384."""
     if resolution in RESOLUTIONS:
         return RESOLUTIONS[resolution]
     try:
@@ -59,21 +50,8 @@ def short_edge(resolution) -> int:
         return RESOLUTIONS[DEFAULT_RESOLUTION]
 
 
-def combination_note(resolution, length: int) -> str | None:
-    """A warning when this size/length pair is beyond what the LoRA trained on (js mirrors this)."""
-    edge = short_edge(resolution)
-    trained = TRAINED_MAX_LENGTH.get(edge, 0)
-    if not trained:
-        return f"{edge}p is untested with Ripple; 384 is the safest size."
-    if length > trained:
-        return (f"{edge}p trained up to {trained} frames; {length} frames is untested there "
-                "and needs much more memory and time.")
-    return None
-
-
 def length_label(frames: int) -> str:
-    tag = "" if frames in TRAINED_LENGTHS else ", untested"
-    return f"{frames} frames ({frames / FPS:.2f} s{tag})"
+    return f"{frames} frames ({frames / FPS:.2f} s)"
 
 
 LENGTH_LABELS = [length_label(frames) for frames in LENGTHS]
@@ -154,8 +132,8 @@ def parse_markers(markers, edit_frame: int, length: int) -> tuple[list[dict], li
     if len(out) > MAX_MARKERS:
         notes.append(f"Only the first {MAX_MARKERS} edited frames are used.")
         out = out[:MAX_MARKERS]
-    if len(out) > TRAINED_MARKERS:
-        notes.append(f"{len(out)} edited frames: the LoRA trained with up to {TRAINED_MARKERS}; more may work but is untested.")
+    if len(out) > RECOMMENDED_MARKERS:
+        notes.append(f"{len(out)} edited frames: two usually give the most consistent result.")
     return out, notes
 
 

@@ -46,7 +46,7 @@
     "Node name for S&R": "WN_RippleClip",
     "wn_ripple": {
      "length": "107 frames (4.46 s)",
-     "resolution": "384 (trained up to 107 frames)",
+     "resolution": "384",
      "window_start": 0,
      "edit_frame": 0,
      "markers": "[{\"frame\":26,\"edited\":\"\",\"edited_at\":null},{\"frame\":80,\"edited\":\"\",\"edited_at\":null}]"
@@ -55,7 +55,7 @@
    "widgets_values": [
     "",
     "107 frames (4.46 s)",
-    "384 (trained up to 107 frames)",
+    "384",
     0,
     0,
     "[{\"frame\":26,\"edited\":\"\",\"edited_at\":null},{\"frame\":80,\"edited\":\"\",\"edited_at\":null}]"
@@ -93,7 +93,7 @@
     "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
     "default"
    ],
-   "title": "H3 FL2VA (the model Ripple trained on)"
+   "title": "H3 FL2VA"
   },
   {
    "id": 3,
@@ -132,7 +132,7 @@
     "H3\\MiniMax-H3-FL2VA-Acc-8Step_comfy.safetensors",
     1.0
    ],
-   "title": "Optional 8-step accelerator (bypassed; untested with Ripple)"
+   "title": "Optional 8-step accelerator (bypassed)"
   },
   {
    "id": 4,
@@ -622,7 +622,7 @@
     "Node name for S&R": "MarkdownNote"
    },
    "widgets_values": [
-    "## H3 Ripple\n\nEdit **two frames** of a shot in any image editor; H3 carries the edit through every frame of the shot.\n\n1. **Ripple Clip** — upload a video. Drag the **blue window** (the frames H3 generates) to the shot you want.\n   Move the two **numbered markers** to frames where the subject is clearly visible.\n2. On each card, **Download frame**, make the **same change** in both images (keep the size), then\n   **upload**, **drop** the file on the card, or select the node and **Ctrl+V** a copied image.\n3. **Run.** Ripple Output saves `ripple/edit_*.mp4` (with the source audio) and `ripple/edit_compare_*.mp4`\n   (source | result, yellow bar = edited frame).\n\nChanging only the edits re-uses the decoded clip, the encoded prompt and the encoded source,\nso a re-run goes almost straight to sampling.\n\n**Keyboard** (node selected): ← / → step the selected marker · Shift+← / → move the window · Tab next marker.\n\n**In-graph editing:** connect *frames_to_edit* to an editor and its output to *edited_images* on Ripple Apply\n(one image per marker, in time order). Connected images override uploaded edits.\n\n### What H3_Ripple_v1 was trained on\n- FL2VA base + this LoRA at strength 1, the fixed prompt on Ripple Apply (leave it), CFG 1.\n- Two edited frames per shot. One works less reliably; three or four are experimental.\n- 384p up to 107 frames (4.46 s) · 352p up to 124 · 544p up to 56. The node warns outside these.\n- 24 fps. Other frame rates are resampled; some native frames can't be picked.\n\nThe **8-step accelerator** loader is bypassed: enable it (Ctrl+B) and set steps to 8 to try faster renders.\nIt has not been tested together with Ripple.\n"
+    "## H3 Ripple\n\nEdit **two frames** of a shot in any image editor; H3 carries the edit through every frame of the shot.\n\n1. **Ripple Clip** — upload a video. Drag the **blue window** (the frames H3 generates) to the shot you want.\n   Move the two **numbered markers** to frames where the subject is clearly visible.\n2. On each card, **Download frame**, make the **same change** in both images (keep the size), then\n   **upload**, **drop** the file on the card, or select the node and **Ctrl+V** a copied image.\n3. **Run.** Ripple Output saves `ripple/edit_*.mp4` (with the source audio) and `ripple/edit_compare_*.mp4`\n   (source | result, yellow bar = edited frame).\n\nChanging only the edits re-uses the decoded clip, the encoded prompt and the encoded source,\nso a re-run goes almost straight to sampling.\n\n**Keyboard** (node selected): ← / → step the selected marker · Shift+← / → move the window · Tab next marker.\n\n**In-graph editing:** connect *frames_to_edit* to an editor and its output to *edited_images* on Ripple Apply\n(one image per marker, in time order). Connected images override uploaded edits.\n\n### Tips\n- FL2VA model + the Ripple LoRA at strength 1, CFG 1. Leave the prompt on Ripple Apply as it is.\n- Use two edited frames and make the same change in both; one edited frame works less reliably.\n- H3 works at 24 fps. Other frame rates are resampled, so some native frames can't be picked.\n\nThe **8-step accelerator** loader is bypassed: enable it (Ctrl+B) and set steps to 8 for faster renders.\n"
    ],
    "title": "Read me"
   }

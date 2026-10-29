@@ -236,13 +236,19 @@ class ClipTest(RippleTest):
         third = clip.select("v.mkv", "56 frames (2.33 s)", rc.DEFAULT_RESOLUTION, 11, 0, json.dumps([3, 40]))
         self.assertNotEqual(third["result"][1]["window_key"], first["result"][1]["window_key"])
 
-    def test_untrained_size_and_length_are_flagged(self):
-        write_numbered(self.root / "v.mkv", 24 * 6, 24)
-        out = ripple.WN_RippleClip().select("v.mkv", "107 frames (4.46 s)", "544 (trained up to 56 frames)", 0, 0, "")
-        self.assertTrue(any("trained up to 56 frames" in t for t in out["ui"]["text"]))
-        self.assertIsNone(rc.combination_note("352 (trained up to 124 frames)", 124))
-        self.assertIsNotNone(rc.combination_note(rc.DEFAULT_RESOLUTION, 124))
-        self.assertIsNotNone(rc.combination_note("768 (untested)", 22))
+    def test_labels_and_older_saved_values(self):
+        self.assertEqual(rc.LENGTH_LABELS[5], "107 frames (4.46 s)")
+        self.assertEqual(list(rc.RESOLUTIONS), ["352", "384", "544", "768"])
+        self.assertTrue(all("trained" not in label and "untested" not in label
+                            for label in [*rc.LENGTH_LABELS, *rc.RESOLUTIONS]))
+        write_numbered(self.root / "v.mkv", 24 * 6, 24, size=(192, 108))
+        clip = ripple.WN_RippleClip
+        self.assertIs(clip.VALIDATE_INPUTS("v.mkv", "124 frames (5.17 s, untested)", "384 (trained up to 107 frames)"),
+                      True)
+        self.assertIsInstance(clip.VALIDATE_INPUTS("v.mkv", "107 frames (4.46 s)", "123"), str)
+        out = clip().select("v.mkv", "22 frames (0.92 s)", "544 (trained up to 56 frames)", 0, 0, "")
+        self.assertEqual((out["result"][1]["width"], out["result"][1]["height"]), (960, 544))
+        self.assertEqual(len(out["ui"]["text"]), 1, "no notes for a plain selection")
 
     def test_frame_png_matches_the_clip_output(self):
         write_numbered(self.root / "v.mkv", 24 * 10, 24, size=(192, 108))

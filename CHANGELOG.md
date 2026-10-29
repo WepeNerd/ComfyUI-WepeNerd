@@ -6,8 +6,7 @@
   **Ripple Output** propagate edits made to two frames of a shot through the whole shot with
   MiniMax H3 FL2VA and the `H3_Ripple_v1` LoRA, plus an example workflow. Compared with the
   review build:
-  - New nodes start with two markers (the LoRA finished training with exactly two edited
-    frames); Apply suggests a second one when only one is used.
+  - New nodes start with two markers; Apply suggests a second one when only one is used.
   - Edits can be dropped onto a marker card or pasted with Ctrl+V, not only uploaded; a
     pasted image no longer becomes a stray Load Image node. Each card warns at once when
     an edit's aspect ratio differs from the frame.
@@ -15,8 +14,8 @@
     (the 32B text encoder is not run again) and the encoded source clip.
   - Ripple Output saves the shot (with source audio) and the comparison as MP4 through
     Save Video and previews them; the example workflow drops four Create/Save Video nodes.
-  - Size and length pairs outside training (for example 544p at 107 frames) are flagged on
-    the node; 352p up to 124 frames, which training covered, is offered.
+  - `resolution` is a plain short edge (352, 384, 544, 768) and `length` a plain frame count
+    with its duration; workflows saved with the older longer labels still load and run.
   - Changing the length keeps unedited markers at the same place in the window and edited
     ones on their frame. Apply warns when an edit was made for a frame the marker has
     since left, and when no edit differs from the source.

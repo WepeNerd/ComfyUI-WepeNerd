@@ -4,7 +4,7 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import {
-    FPS, MAX_MARKERS, TRAINED_LENGTHS, TRAINED_MARKERS, aspectMismatch, canvasSize, combinationNote, fitWindow,
+    FPS, MAX_MARKERS, RECOMMENDED_MARKERS, aspectMismatch, canvasSize, fitWindow,
     gridFrames, gridIndexAt, hitMarker, hitTest, makeLayout, moveMarker, parseLength, parseMarkers, rescaleMarkers,
     seekTime, shortEdge, suggestFrame, tickStep, timecode,
 } from "./ripple_timeline.mjs";
@@ -43,14 +43,28 @@ function remember(node) {
     node.properties.wn_ripple = Object.fromEntries(SAVED.map((name) => [name, widgetOf(node, name)?.value]));
 }
 
+// A combo value from an older label ("384 (…)", "124 frames (5.17 s, …)") maps to the option with the same number.
+function comboValue(widget, value) {
+    const values = widget?.options?.values;
+    if (!Array.isArray(values) || values.includes(value)) return value;
+    const number = parseInt(String(value), 10);
+    return values.find((option) => parseInt(String(option), 10) === number);
+}
+
 function restore(node) {
+    for (const name of ["length", "resolution"]) {
+        const widget = widgetOf(node, name);
+        const value = comboValue(widget, widget?.value);
+        if (widget && value !== undefined) widget.value = value;
+    }
     const saved = node.properties?.wn_ripple;
     if (!saved) return;
     for (const name of SAVED) {
         const widget = widgetOf(node, name);
         if (!widget || saved[name] === undefined) continue;
-        if (Array.isArray(widget.options?.values) && !widget.options.values.includes(saved[name])) continue;
-        widget.value = saved[name];
+        const value = comboValue(widget, saved[name]);
+        if (value === undefined) continue;
+        widget.value = value;
     }
 }
 
@@ -325,8 +339,6 @@ function installRipple(node) {
                 el("button", { type: "button", "data-ripple-focus": "next", title: "Move selected frame forward by one", onclick: () => stepMarker(1) }, "Next frame")),
             el("span", { class: "ripple-meta" }, `${canvas ? `${canvas.width}×${canvas.height} · ` : ""}${now.length} frames · ${(now.length / FPS).toFixed(2)} s`));
         content.append(controls);
-        const combination = combinationNote(resolution, now.length);
-        if (combination) content.append(el("div", { class: "ripple-warning" }, combination));
         const add = el("button", { type: "button", "data-ripple-focus": "add", onclick: () => {
             const at = suggestFrame(now.frames, now.length);
             if (at < 0 || now.markers.length >= MAX_MARKERS) return;
@@ -336,8 +348,8 @@ function installRipple(node) {
         add.disabled = now.markers.length >= MAX_MARKERS;
         content.append(el("div", { class: "ripple-section" },
             el("div", {}, el("strong", {}, "2. Edit your frames"),
-                now.markers.length < TRAINED_MARKERS
-                    ? el("span", { class: "ripple-warning" }, "Add a second frame: the LoRA trained with two")
+                now.markers.length < RECOMMENDED_MARKERS
+                    ? el("span", { class: "ripple-warning" }, "Add a second frame for the most consistent result")
                     : el("span", { class: "ripple-meta" }, "Two frames recommended · give both the same look")), add));
         for (const index of state.thumbs.keys()) if (index >= now.markers.length) state.thumbs.delete(index);
         const cards = el("div", { class: "ripple-frames" });
@@ -417,7 +429,7 @@ function installRipple(node) {
             el("strong", {}, "3. Preview your result"),
             el("span", { class: moved ? "ripple-warning" : "ripple-meta" }, moved ? "Check moved frames before running."
                 : `${attached} of ${now.markers.length} edits attached. ${attached === now.markers.length ? "Use ComfyUI Run to generate the selected shot." : "Attach your edits, then use ComfyUI Run."}`)));
-        if (now.markers.length > TRAINED_MARKERS) content.append(el("div", { class: "ripple-warning" }, "More than two edited frames is experimental."));
+        if (now.markers.length > RECOMMENDED_MARKERS) content.append(el("div", { class: "ripple-meta" }, "Two edited frames usually give the most consistent result."));
         if (state.panelError) content.append(el("div", { class: "ripple-warning", role: "alert" }, state.panelError));
         const advanced = el("details", { class: "ripple-advanced" }, el("summary", {}, "Advanced · editor connections & shortcuts"));
         advanced.open = state.advanced;
@@ -428,7 +440,7 @@ function installRipple(node) {
             el("p", {}, changed ? "Selection changed: run the frame extraction again for your connected editor."
                 : exec ? "Frame extraction matches this selection." : "Run the Clip node once to extract frames for a connected editor."),
             el("p", {}, "On the canvas: ← / → step a frame · Shift + arrows move the shot · Tab switches markers · Ctrl+V pastes an edit onto the selected frame. You can also drop an image onto a card."),
-            el("p", {}, `Source: ${state.info.width} × ${state.info.height} · ${state.info.fps.toFixed(2)} fps · ${timecode(state.info.duration)}${TRAINED_LENGTHS.includes(now.length) ? "" : " · extended shot length"}`)));
+            el("p", {}, `Source: ${state.info.width} × ${state.info.height} · ${state.info.fps.toFixed(2)} fps · ${timecode(state.info.duration)}`)));
         advanced.addEventListener("toggle", () => { state.advanced = advanced.open; resize(); });
         content.append(advanced);
         scheduleThumbs();
