@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- Add H3 Ripple (from the Experimental review build): **Ripple Clip**, **Ripple Apply** and
+  **Ripple Output** propagate edits made to two frames of a shot through the whole shot with
+  MiniMax H3 FL2VA and the `H3_Ripple_v1` LoRA, plus an example workflow. Compared with the
+  review build:
+  - New nodes start with two markers (the LoRA finished training with exactly two edited
+    frames); Apply suggests a second one when only one is used.
+  - Edits can be dropped onto a marker card or pasted with Ctrl+V, not only uploaded; a
+    pasted image no longer becomes a stray Load Image node. Each card warns at once when
+    an edit's aspect ratio differs from the frame.
+  - Re-running after changing only the edits reuses the decoded window, the encoded prompt
+    (the 32B text encoder is not run again) and the encoded source clip.
+  - Ripple Output saves the shot (with source audio) and the comparison as MP4 through
+    Save Video and previews them; the example workflow drops four Create/Save Video nodes.
+  - Size and length pairs outside training (for example 544p at 107 frames) are flagged on
+    the node; 352p up to 124 frames, which training covered, is offered.
+  - Changing the length keeps unedited markers at the same place in the window and edited
+    ones on their frame. Apply warns when an edit was made for a frame the marker has
+    since left, and when no edit differs from the source.
+  - Thumbnails are cached by the browser until the video changes and keep showing while a
+    marker or the window is dragged; the marker panel redraws at most once per frame.
+  - The video list is shared with Load Video (cached), instead of walking the whole input
+    folder each time the node list refreshes.
+
 - Sigma Curve: presets now match ComfyUI's schedulers step for step. Poly-exponential
   was mirrored (it held high sigmas, then dropped sharply). Flow shift 3/6 and Align
   Your Steps ended on `sigma_min` instead of ComfyUI's last real step, and Align Your

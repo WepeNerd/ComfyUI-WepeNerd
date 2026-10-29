@@ -13,6 +13,9 @@
     "WepeNerdLoadLoraMasked": "masked_lora_node",
     "WN_MaskedLoraSnapshot": "masked_lora_node",
     "WN_FrameNumberSelector": "frame_number_node",
-    "WN_FrameSlicer": "frame_slicer_node"
+    "WN_FrameSlicer": "frame_slicer_node",
+    "WN_RippleClip": "ripple_node",
+    "WN_RippleApply": "ripple_node",
+    "WN_RippleOutput": "ripple_node"
   }
 }

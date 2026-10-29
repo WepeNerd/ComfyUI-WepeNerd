@@ -24,6 +24,9 @@ from .frame_number_node import NODE_DISPLAY_NAME_MAPPINGS as FRAME_NUMBER_NAMES
 from .frame_number_node import register_frame_number_routes
 from .frame_slicer_node import NODE_CLASS_MAPPINGS as FRAME_SLICER_NODES
 from .frame_slicer_node import NODE_DISPLAY_NAME_MAPPINGS as FRAME_SLICER_NAMES
+from .ripple_node import NODE_CLASS_MAPPINGS as RIPPLE_NODES
+from .ripple_node import NODE_DISPLAY_NAME_MAPPINGS as RIPPLE_NAMES
+from .ripple_node import register_ripple_routes
 
 WEB_DIRECTORY = "./js"
 NODE_CLASS_MAPPINGS = {
@@ -65,10 +68,13 @@ NODE_CLASS_MAPPINGS.update(FRAME_NUMBER_NODES)
 NODE_DISPLAY_NAME_MAPPINGS.update(FRAME_NUMBER_NAMES)
 NODE_CLASS_MAPPINGS.update(FRAME_SLICER_NODES)
 NODE_DISPLAY_NAME_MAPPINGS.update(FRAME_SLICER_NAMES)
+NODE_CLASS_MAPPINGS.update(RIPPLE_NODES)
+NODE_DISPLAY_NAME_MAPPINGS.update(RIPPLE_NAMES)
 
 register_speedpaint_routes()
 register_frame_number_routes()
 register_load_video_routes()
+register_ripple_routes()
 register_module_cache_headers()
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]

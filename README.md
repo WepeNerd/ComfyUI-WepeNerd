@@ -1,6 +1,7 @@
 # ComfyUI-WepeNerd
 
-Resolution tools, painting and image warping, and spatial LoRA masks for ComfyUI.
+Resolution tools, video loading and saving, painting and image warping, spatial LoRA masks and
+H3 Ripple video edit propagation for ComfyUI.
 
 | Tool | What it does |
 |---|---|
@@ -22,6 +23,7 @@ Resolution tools, painting and image warping, and spatial LoRA masks for ComfyUI
 | **Sigma Curve** | Draw a SIGMAS schedule by dragging points on a graph, with presets and exact numeric entry |
 | **Slider** | Map a compact FLOAT control to your preferred strength range |
 | **Load LoRA Masked · Beta** | Apply spatial LoRA/LoKr regions to native Krea2 models |
+| **H3 Ripple** | Edit two frames of a shot in any image editor; MiniMax H3 carries the edit through the whole shot |
 
 ## Installation
 
@@ -82,6 +84,15 @@ workflow.
   by default; Measure Drift is optional. Use **Image Edit Difference Mask** for a
   mask preview and finer cleanup controls. Pixels where the final mask is zero
   are copied exactly from the source. See the [controls and limits](docs/nodes.md#image-edit-alignment).
+
+- **H3 Ripple:** open the [H3 Ripple workflow](example_workflows/H3_Ripple.json) (also under
+  **Templates › ComfyUI-WepeNerd**). It needs the MiniMax H3 FL2VA model, its text encoder and video
+  VAE, and the `H3_Ripple_v1` LoRA. In **Ripple Clip**, upload a video, drag the blue window to the shot
+  and move the two numbered markers to clear views of the subject. **Download frame** on each card, make
+  the same change in both images, then upload, drop or paste (Ctrl+V) them onto their cards and **Run**.
+  Ripple Output saves the shot with its source audio and a source | result comparison. Re-running with
+  new edits skips the video decode, prompt encoding and source encoding.
+  See [H3 Ripple](docs/nodes.md#h3-ripple) for the trained sizes and lengths.
 
 See the [node guide](docs/nodes.md) for controls, inputs, outputs, and limitations.
 

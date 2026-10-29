@@ -275,6 +275,85 @@ saying why, instead of passing an empty batch on to fail in a later node.
 
 The frames are copied exactly, keeping their size, channels, dtype and device.
 
+## H3 Ripple
+
+Edit two frames of a shot in any image editor and MiniMax H3 re-renders the shot with the edit
+carried through every frame, before, between and after the edited ones. Three nodes under
+**WepeNerd/H3 Ripple**, used together in the [example workflow](../example_workflows/H3_Ripple.json)
+(also listed under **Templates › ComfyUI-WepeNerd**).
+
+**Requirements:** the MiniMax H3 **FL2VA** model (`minimax_h3_fl2va_pruned_int8_convrot` is what
+training used), the `minimax` text encoder, the H3 video VAE, and the **H3_Ripple_v1** LoRA at
+strength 1. Sample with a BasicGuider (CFG 1); the example uses `res_multistep`, `simple`, 20 steps.
+The Ostris training adapter is training-only; never load it here.
+
+### Ripple Clip
+
+Upload or pick a video. Everything happens on H3's 24 fps grid; other frame rates are resampled
+once, exactly as FFmpeg's `fps=24` filter would, and the preview, thumbnails and outputs all show
+the same frames.
+
+- **Blue window:** the frames H3 generates. Drag it, or click the track to centre it there.
+  `length` picks how many frames (17k + 5); a video shorter than the window gets the longest
+  length that fits. Nothing is padded or looped.
+- **Numbered markers:** the frames you edit. New nodes start with two, a quarter and three
+  quarters into the window. Drag a marker, or select the node and use ← / → (Shift moves the
+  window, Shift+Alt by one second; Tab switches markers). **+ Add frame** adds up to four.
+- **Cards:** one per marker, with the exact source frame at the generation size. **Download
+  frame**, edit it, then **Upload edit**, drop the image onto the card, or select the node and
+  press **Ctrl+V** to attach a copied image to the selected marker. Edits are stored in
+  `input/ripple_edits`.
+- Warnings appear on the card when an edit's aspect ratio differs from the frame (it will be
+  centre-cropped) and when the marker or window has moved since the edit was attached.
+- `resolution` is the short edge; the long edge follows the video's aspect, rounded to 32.
+  The node flags pairs outside training (below).
+- **Play shot** loops the window in the preview without moving anything.
+
+| Output | Description |
+|---|---|
+| `frames_to_edit` | The marked frames, in time order, for an in-graph editor. |
+| `ripple` | Window frames, markers, size, audio slice and source for Apply and Output. |
+| `source_window` | All frames of the window at the generation size. |
+| `audio` | The window's source audio, or None. |
+
+### Ripple Apply
+
+Builds the conditioning the LoRA trained on: the fixed text prompt (leave it; the edit comes from
+the images), the whole original window as a guide at frame 0, and each edited frame encoded on its
+own as a guide at its frame, as chained **Add Guide for MiniMax H3** nodes would. Edited images come
+from the cards, or from `edited_images` (one per marker, in time order), which take precedence.
+
+Apply reports, per marker, whether the image matches its source frame (✓), and warns when an image
+looks made from another frame, was made before its marker moved, is unchanged from the source (that
+moment is then kept as it is), or when only one marker is used. A marker without an edit stops the
+run before anything is encoded.
+
+Re-running after changing only the edits reuses the encoded prompt, so the 32B text encoder does not
+run again, and the encoded source window; only the edited frames are encoded. Ripple Clip likewise
+reuses the decoded window when only the markers or edits change.
+
+### Ripple Output
+
+Saves the generated shot as MP4 (H.264) with the window's source audio, and a silent source | result
+comparison with a yellow bar on each edited frame, through **Save Video**. `save` picks either, both
+or nothing; `filename_prefix` defaults to `ripple/edit` (the comparison adds `_compare`). It also
+outputs `images`, `audio`, `frame_rate` (24) and `comparison` for other savers or post-processing.
+The output covers the selected shot only; it does not splice the shot back into the full video.
+
+### What H3_Ripple_v1 was trained on
+
+| Short edge | Lengths | Notes |
+|---|---|---|
+| 384 (672×384, 384×672) | 22–107 frames | Default; up to 4.46 s. |
+| 352 (640×352) | 124 frames | 5.17 s. |
+| 544 (960×544, 544×960) | 22–56 frames | More detail, shorter shots. |
+| 768 | — | Untested. |
+
+Training ended with exactly two edited frames per example, chosen from frames where the edit is
+visible, plus reverse (undo) and identity (unchanged frame) pairs. One edited frame still works but
+carries the edit less reliably; three or four are untested. Results depend on the shot: test with
+your own footage and keep the seed fixed when comparing edits.
+
 ## Drag Resolution
 
 
