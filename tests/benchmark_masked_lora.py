@@ -2,7 +2,7 @@
 
 Run with the ComfyUI Python environment. Results include synchronous wall time,
 actual conversion counts, logical destination bytes (not measured PCIe traffic),
-and CUDA allocator peaks. See docs/masked-lora-phase2.md for scope and results.
+and CUDA allocator peaks.
 """
 
 import argparse
@@ -55,11 +55,10 @@ def file_loading(kind, width, directory):
 
 
 class Phase1Forward:
-    """Phase 1's per-region transfer/clone algorithm, consolidated only for timing.
+    """Per-region transfer/clone baseline, consolidated for timing.
 
-    This gives the same original-once/add-in-order behavior as its nested forwards.
-    Masks are prepared before timing, as they were by the diffusion wrapper; this
-    deliberately excludes Phase 1's repeated CPU projection/transfer overhead.
+    Calls the original layer once, then adds region contributions in order.
+    Masks are prepared before timing, excluding CPU projection/transfer overhead.
     """
     def __init__(self, layer, contributions, layout, device, dtype):
         self.layer = layer

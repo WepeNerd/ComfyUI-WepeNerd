@@ -1,24 +1,13 @@
-"""H3 Ripple nodes: pick a window and one or more frames, edit them anywhere, propagate the edit with H3.
+"""H3 Ripple video preparation, edited-frame conditioning and output nodes.
 
-Ripple Clip   - load a video, choose the generation window and the frames to edit on a timeline
-                ("Add edited frame" adds markers). Each marker can carry an attached edited image.
-                Outputs the exact frames to edit and a RIPPLE context (window frames, markers, size, audio).
-Ripple Apply  - builds the H3 FL2VA conditioning the Ripple LoRA expects: prompt-only text,
-                the original window as a guide at frame 0 and each edited image as its own
-                single-image guide at its frame (the same keyframes chained Add Guide nodes make).
-Ripple Output - saves the generated shot with its source audio and a source | result comparison
-                (through Save Video), and passes the frames on.
-
-Clip -> editor -> Apply is two nodes on purpose: a node cannot send an image to an editor and get
-the result back (ComfyUI rejects cycles). Put Clip and Apply in one group.
-
-Iterating is cheap: a re-run after changing only the edits re-uses the decoded window, the encoded
-prompt and the encoded source clip, so it encodes just the edited frames before sampling.
+Preparation and conditioning use separate nodes so external image editors can
+connect between them without creating a graph cycle.
 """
 
 from __future__ import annotations
 
 import itertools
+import json
 import math
 import weakref
 from pathlib import Path
@@ -26,6 +15,9 @@ from pathlib import Path
 import av
 import numpy as np
 import torch
+import torch.nn.functional as F
+from PIL import Image
+from comfy_api.latest import io
 
 try:
     from . import ripple_core as rc
@@ -49,12 +41,12 @@ def _input_root() -> Path:
 
 
 def list_videos() -> list[str]:
-    """Videos in the input folder (Load Video's cached listing, so big input folders stay fast)."""
+    """Input videos from Load Video's cached listing."""
     return lv.list_videos(_input_root()) or [""]
 
 
 def video_path(video: str) -> Path:
-    """The video's path, which must be inside the input folder (same rules as Load Video)."""
+    """Resolve a video path within the input folder."""
     return lv.video_path(video)
 
 
@@ -94,7 +86,7 @@ def probe(path: Path) -> dict:
         "duration": float(duration), "first_time": first_time,
         "grid_frames": rc.grid_frame_count(max(0.0, duration - first_time)),
         "audio": None,
-        # Changes when the file does: lets the browser cache exact-frame thumbnails safely.
+        # Invalidate cached thumbnails when the source file changes.
         "version": f"{stat.st_size:x}-{stat.st_mtime_ns:x}",
     }
     with av.open(str(path)) as container:
@@ -105,12 +97,13 @@ def probe(path: Path) -> dict:
     return dict(info)
 
 
-def decode_grid_window(path: Path, start: int, length: int) -> tuple[np.ndarray, float]:
+def decode_grid_window(path: Path, start: int, length: int, geometry=None) -> tuple[np.ndarray, float]:
     """Frames ``start .. start+length-1`` of the source resampled to 24 fps, as uint8 [N, H, W, 3].
 
     The 24 fps grid starts at the first frame (FFmpeg fps filter, round=near): grid frame k is the
-    last source frame starting before (k + 0.5) / 24, which is what the browser preview seeks to. Decoding jumps to a keyframe before the window; frames before the
-    window are never converted to RGB. Also returns the window's start time in source seconds.
+    last source frame starting before (k + 0.5) / 24, matching the browser preview.
+    Decode from the preceding keyframe and convert only window frames to RGB.
+    Also returns the window's start time in source seconds.
     """
     with av.open(str(path)) as container:
         stream = container.streams.video[0]
@@ -158,6 +151,8 @@ def decode_grid_window(path: Path, start: int, length: int) -> tuple[np.ndarray,
                 pixels = out.to_ndarray(format="rgb24")
                 if rotation:
                     pixels = np.rot90(pixels, rotation // 90)
+                if geometry is not None:
+                    pixels = transform_pixels(pixels, geometry)
                 frames.append(np.ascontiguousarray(pixels))
             if len(frames) >= length:
                 break
@@ -206,7 +201,8 @@ def load_input_image(relative: str) -> torch.Tensor:
         return torch.from_numpy(np.asarray(image, dtype=np.float32) / 255.0)[None]
 
 
-def frame_png(video: str, absolute_frame: int, resolution: str) -> tuple[bytes, str]:
+def frame_png(video: str, absolute_frame: int, megapixels=rc.DEFAULT_MEGAPIXELS, crop="", allow_upscale=False,
+              resize_method="lanczos", output_width=0, output_height=0) -> tuple[bytes, str]:
     """PNG of one 24 fps grid frame at the generation size, exactly as Ripple Clip outputs it."""
     import io
     from PIL import Image
@@ -214,20 +210,45 @@ def frame_png(video: str, absolute_frame: int, resolution: str) -> tuple[bytes, 
     path = video_path(video)
     info = probe(path)
     absolute_frame = min(max(0, int(absolute_frame)), max(0, info["grid_frames"] - 1))
-    frames, _ = decode_grid_window(path, absolute_frame, 1)
-    width, height = rc.canvas_size(info["width"], info["height"], rc.short_edge(resolution))
-    image = to_canvas(torch.from_numpy(frames[:1]).float().div_(255), width, height)[0]
+    geometry = rc.geometry(info["width"], info["height"], megapixels, crop, allow_upscale,
+                           resize_method, output_width, output_height)
+    frames, _ = decode_grid_window(path, absolute_frame, 1, geometry)
+    image = trim_content(torch.from_numpy(frames[:1]).float().div_(255), geometry)[0]
     buffer = io.BytesIO()
     Image.fromarray((image.clamp(0, 1).numpy() * 255).round().astype(np.uint8)).save(buffer, format="PNG")
     return buffer.getvalue(), f"{Path(video).stem}_f{absolute_frame:05d}.png"
 
 
-def to_canvas(images: torch.Tensor, width: int, height: int) -> torch.Tensor:
-    """Cover-resize and centre-crop [B, H, W, C] floats, exactly like the H3 guide nodes do."""
+def transform_pixels(pixels: np.ndarray, geometry: dict) -> np.ndarray:
+    """Crop and resize one decoded frame before accumulating a window in RAM."""
+    x, y, w, h = geometry["source_rect"]
+    left, top, cw, ch = geometry["content_rect"]
+    filters = {"lanczos": Image.Resampling.LANCZOS, "bicubic": Image.Resampling.BICUBIC,
+               "bilinear": Image.Resampling.BILINEAR, "nearest-exact": Image.Resampling.NEAREST,
+               "area": Image.Resampling.BOX}
+    image = Image.fromarray(np.ascontiguousarray(pixels[y:y + h, x:x + w]))
+    content = np.asarray(image.resize((cw, ch), filters[geometry["resize_method"]]))
+    return np.pad(content, ((top, geometry["height"] - ch - top),
+                            (left, geometry["width"] - cw - left), (0, 0)), mode="edge")
+
+
+def trim_content(images: torch.Tensor, geometry: dict | None) -> torch.Tensor:
+    x, y, w, h = geometry["content_rect"]
+    return images[:, y:y + h, x:x + w].clone()
+
+
+def edit_to_canvas(images: torch.Tensor, geometry: dict) -> torch.Tensor:
+    """An exported edit already has the source crop; resize it and restore only model padding."""
     import comfy.utils
 
-    samples = images[..., :3].movedim(-1, 1)
-    return comfy.utils.common_upscale(samples, width, height, "lanczos", "center").movedim(1, -1).clamp(0, 1)
+    left, top, cw, ch = geometry["content_rect"]
+    # Editors can round the two axes to their own latent grid. Restore the complete image to
+    # the exported frame's coordinates; applying the source crop again would change the edit.
+    content = images[..., :3].movedim(-1, 1)
+    if images.shape[1:3] != (ch, cw):
+        content = comfy.utils.common_upscale(content, cw, ch, geometry["resize_method"], "disabled")
+    return F.pad(content, (left, geometry["width"] - cw - left, top, geometry["height"] - ch - top),
+                 mode="replicate").movedim(1, -1).clamp(0, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -246,21 +267,19 @@ def _same(ref, obj) -> bool:
     return ref is not None and ref() is obj
 
 
-# One entry each: the last decoded window, the last encoded prompt and the last encoded source clip.
-# Re-running with new edits or a new seed then skips the video decode, the (large) text encoder and the
-# whole-window VAE encode. Entries hold weak references to the CLIP/VAE so swapping models frees them.
+# Each cache holds one entry. Weak CLIP/VAE references allow models to be released.
 _window_cache: dict = {}
 _prompt_cache: dict = {}
 _source_cache: dict = {}
 
 
-def load_window(path: Path, info: dict, start: int, length: int, width: int, height: int) -> dict:
+def load_window(path: Path, info: dict, start: int, length: int, geometry: dict) -> dict:
     """Decode, resize and slice the audio of one window; the last result is kept for re-runs."""
     stat = path.stat()
-    key = (str(path), stat.st_size, stat.st_mtime_ns, start, length, width, height)
+    key = (str(path), stat.st_size, stat.st_mtime_ns, start, length, json.dumps(geometry, sort_keys=True))
     if _window_cache.get("key") == key:
         return _window_cache["value"]
-    frames, window_time = decode_grid_window(path, start, length)
+    frames, window_time = decode_grid_window(path, start, length, geometry)
     notes = []
     if len(frames) < length:  # the container overstated its duration
         shorter = 17 * ((len(frames) - 5) // 17) + 5
@@ -268,7 +287,7 @@ def load_window(path: Path, info: dict, start: int, length: int, width: int, hei
             raise ValueError(f"Only {len(frames)} frames could be decoded at frame {start}; H3 needs at least 5.")
         notes.append(f"Only {len(frames)} frames could be decoded here; using {shorter}.")
         frames, length = frames[:shorter], shorter
-    window = to_canvas(torch.from_numpy(frames).float().div_(255), width, height)
+    window = torch.from_numpy(frames).float().div_(255)
     audio = decode_audio(path, window_time, length / rc.FPS) if info.get("audio") else None
     value = {"window": window, "length": length, "window_time": window_time, "audio": audio, "notes": notes,
              "key": key}
@@ -278,7 +297,7 @@ def load_window(path: Path, info: dict, start: int, length: int, width: int, hei
 
 
 def encode_prompt(clip, prompt: str):
-    """Text-only conditioning (no guide is shown to the text encoder, as in training), cached per CLIP."""
+    """Text-only conditioning, cached per CLIP and prompt."""
     if _same(_prompt_cache.get("clip"), clip) and _prompt_cache.get("prompt") == prompt:
         return _prompt_cache["value"]
     value = clip.encode_from_tokens_scheduled(clip.tokenize(prompt))
@@ -298,16 +317,37 @@ def encode_source(vae, ripple: dict):
     return value
 
 
+def framing_inputs():
+    return {
+        "crop": ("STRING", {"default": "", "tooltip": "Normalized source crop [x, y, width, height]."}),
+        "allow_upscale": ("BOOLEAN", {"default": False, "tooltip": "Allow enlarging the cropped source."}),
+        "resize_method": (list(rc.RESIZE_METHODS), {"default": "lanczos"}),
+        "output_width": ("INT", {"default": 0, "min": 0, "max": 16384, "step": 32,
+                                 "tooltip": "Fit within this width. Set height too; zero uses megapixels."}),
+        "output_height": ("INT", {"default": 0, "min": 0, "max": 16384, "step": 32,
+                                  "tooltip": "Fit within this height. Set width too; zero uses megapixels."}),
+    }
+
+
+def anchor_outputs(window, markers, geometry):
+    frames = trim_content(window[[m["frame"] for m in markers]], geometry)
+    by_id = {m["id"]: frames[i:i + 1] for i, m in enumerate(markers)}
+    empty = frames[:0].clone()
+    return frames, by_id.get(1, empty), by_id.get(2, empty)
+
+
 class WN_RippleClip:
     CATEGORY = "WepeNerd/H3 Ripple"
     FUNCTION = "select"
-    RETURN_TYPES = ("IMAGE", RIPPLE_TYPE, "IMAGE", "AUDIO")
-    RETURN_NAMES = ("frames_to_edit", "ripple", "source_window", "audio")
+    RETURN_TYPES = ("IMAGE", RIPPLE_TYPE, "IMAGE", "AUDIO", "IMAGE", "IMAGE")
+    RETURN_NAMES = ("frames_to_edit", "ripple", "source_window", "audio", "anchor_1", "anchor_2")
     OUTPUT_TOOLTIPS = (
         "The exact frames to edit (one per marker, in time order), at the size H3 will generate.",
         "Window frames, edited-frame markers and size for Ripple Apply / Ripple Output.",
         "The original frames of the window at the generation size.",
         "The source audio of the window (None if the video has no audio).",
+        "The image for marker 1, independent of its position on the timeline.",
+        "The image for marker 2; empty until a second marker exists.",
     )
     DESCRIPTION = (
         "Load a video, drag the blue window (the frames H3 will generate) along the timeline and move the "
@@ -322,32 +362,28 @@ class WN_RippleClip:
         return {
             "required": {
                 "video": (list_videos(), {"video_upload": True}),
-                "length": (rc.LENGTH_LABELS, {"default": rc.DEFAULT_LENGTH_LABEL,
-                           "tooltip": "Frames H3 generates (24 fps)."}),
-                "resolution": (list(rc.RESOLUTIONS), {"default": rc.DEFAULT_RESOLUTION,
-                               "tooltip": "Short edge of the generation; the long edge follows the video's aspect."}),
+                "duration": ("FLOAT", {"default": rc.DEFAULT_DURATION, "min": 5 / rc.FPS, "max": 150.0,
+                                       "step": 0.01, "tooltip": "Seconds at 24 fps; snaps to H3's frame grid."}),
+                "megapixels": ("FLOAT", {"default": rc.DEFAULT_MEGAPIXELS, "min": 0.001, "max": 268.435456,
+                                         "step": 0.01, "tooltip": "Visible image area in megapixels."}),
                 "window_start": ("INT", {"default": 0, "min": 0, "max": 10_000_000,
                                  "tooltip": "First frame of the window on the video's 24 fps timeline. Set by the timeline."}),
-                "edit_frame": ("INT", {"default": 0, "min": 0, "max": 1000,
-                               "tooltip": "First edited frame inside the window (0 = first). Set by the timeline."}),
-            },
-            "optional": {
                 "markers": ("STRING", {"default": rc.DEFAULT_MARKERS_JSON, "multiline": False,
-                            "tooltip": "Edited-frame markers as JSON, managed by the timeline. Empty = one marker at edit_frame."}),
+                            "tooltip": "Edited-frame markers with stable IDs, managed by the timeline."}),
             },
+            "optional": framing_inputs(),
         }
 
     @classmethod
-    def VALIDATE_INPUTS(cls, video, length, resolution):
-        # length and resolution are checked here rather than against the lists, so workflows saved with
-        # older labels ("384 (...)") keep working.
+    def VALIDATE_INPUTS(cls, video, duration, megapixels, crop="",
+                        allow_upscale=False, resize_method="lanczos", output_width=0, output_height=0):
         try:
             video_path(video)
-            rc.parse_length(length)
-        except ValueError as error:
+            rc.duration_frames(duration)
+            rc.geometry(1920, 1080, megapixels, crop, allow_upscale, resize_method,
+                        output_width, output_height)
+        except (ValueError, IndexError, TypeError) as error:
             return str(error)
-        if rc.short_edge(resolution) not in rc.RESOLUTIONS.values():
-            return f"Unknown resolution: {resolution}"
         return True
 
     @classmethod
@@ -355,26 +391,94 @@ class WN_RippleClip:
         stat = video_path(video).stat()
         return (video, stat.st_size, stat.st_mtime_ns, tuple(sorted(kwargs.items())))
 
-    def select(self, video, length, resolution, window_start, edit_frame, markers=""):
+    def select(self, video, duration, megapixels, window_start, markers, crop="", allow_upscale=False,
+               resize_method="lanczos", output_width=0, output_height=0):
         path = video_path(video)
         info = probe(path)
-        start, frames_n, edit, notes = rc.fit_window(info["grid_frames"], window_start, rc.parse_length(length), edit_frame)
-        width, height = rc.canvas_size(info["width"], info["height"], rc.short_edge(resolution))
-        loaded = load_window(path, info, start, frames_n, width, height)
+        start, frames_n, notes = rc.fit_window(info["grid_frames"], window_start, rc.duration_frames(duration))
+        geometry = rc.geometry(info["width"], info["height"], megapixels, crop, allow_upscale,
+                               resize_method, output_width, output_height)
+        width, height = geometry["width"], geometry["height"]
+        loaded = load_window(path, info, start, frames_n, geometry)
         window, frames_n, audio = loaded["window"], loaded["length"], loaded["audio"]
         notes += loaded["notes"]
-        marker_list, marker_notes = rc.parse_markers(markers, min(edit, frames_n - 1), frames_n)
+        marker_list, marker_notes = rc.parse_markers(markers, frames_n)
         notes += marker_notes
         edits = [marker["frame"] for marker in marker_list]
         ripple = {
-            "window": window, "markers": marker_list, "edit_frame": edits[0], "length": frames_n, "width": width,
+            "window": window, "markers": marker_list, "length": frames_n, "width": width,
             "height": height, "fps": rc.FPS, "window_start": start, "window_time": loaded["window_time"],
-            "audio": audio, "source": video, "window_key": loaded["key"],
+            "audio": audio, "source": video, "source_version": info["version"], "window_key": loaded["key"],
             "binding": (video, path.stat().st_mtime_ns, start, frames_n, tuple(edits), width, height),
+            "geometry": geometry,
         }
-        text = [rc.describe(start, frames_n, edits) + f" · {width}x{height}", *notes]
-        ui = {"text": text, "binding": [start, frames_n, edits, video]}
-        return {"ui": ui, "result": (window[edits].clone(), ripple, window, audio)}
+        cw, ch = geometry["content_rect"][2:]
+        text = [rc.describe(start, frames_n, edits) + f" · {cw}x{ch}", *notes]
+        ui = {"text": text, "binding": [start, frames_n, edits, video], "geometry": [geometry]}
+        frames, anchor1, anchor2 = anchor_outputs(window, marker_list, geometry)
+        return {"ui": ui, "result": (frames, ripple, window, audio, anchor1, anchor2)}
+
+
+class WN_RippleFromFrames(io.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="WN_RippleFromFrames", display_name="H3 Ripple From Frames (WepeNerd)",
+            category="WepeNerd/H3 Ripple",
+            description="Prepare frames from any video loader for Ripple, keeping the source framing and audio.",
+            inputs=[
+                io.Image.Input("images"),
+                io.Float.Input("frame_rate", default=24.0, min=0.001, max=1000.0),
+                io.Float.Input("duration", default=rc.DEFAULT_DURATION, min=5 / rc.FPS, max=150.0, step=0.01),
+                io.Float.Input("megapixels", default=rc.DEFAULT_MEGAPIXELS, min=0.001, max=268.435456, step=0.01),
+                io.Int.Input("window_start", default=0, min=0, max=10_000_000),
+                io.String.Input("markers", default=rc.DEFAULT_MARKERS_JSON, multiline=True,
+                                tooltip='Marker IDs and zero-based frames, for example [{"id":1,"frame":0},{"id":2,"frame":53}].'),
+                io.Audio.Input("audio", optional=True),
+                io.String.Input("crop", default="", optional=True),
+                io.Boolean.Input("allow_upscale", default=False, optional=True),
+                io.Combo.Input("resize_method", options=list(rc.RESIZE_METHODS), default="lanczos", optional=True),
+                io.Int.Input("output_width", default=0, min=0, max=16384, step=32, optional=True,
+                             tooltip="Fit within this width; set height too."),
+                io.Int.Input("output_height", default=0, min=0, max=16384, step=32, optional=True,
+                             tooltip="Fit within this height; set width too."),
+            ],
+            outputs=[io.Image.Output(display_name="frames_to_edit"), io.Custom(RIPPLE_TYPE).Output(display_name="ripple"),
+                     io.Image.Output(display_name="source_window"), io.Audio.Output(display_name="audio"),
+                     io.Image.Output(display_name="anchor_1"), io.Image.Output(display_name="anchor_2")])
+
+    @classmethod
+    def execute(cls, images, frame_rate, duration, megapixels, window_start, markers, audio=None,
+                crop="", allow_upscale=False, resize_method="lanczos", output_width=0, output_height=0):
+        if images.ndim != 4 or images.shape[-1] < 3 or not len(images):
+            raise ValueError("Images must be a nonempty frame batch.")
+        if not math.isfinite(frame_rate) or frame_rate <= 0:
+            raise ValueError("Frame rate must be positive.")
+        available = rc.grid_frame_count(len(images) / frame_rate)
+        start, length, notes = rc.fit_window(available, window_start, rc.duration_frames(duration))
+        geometry = rc.geometry(int(images.shape[2]), int(images.shape[1]), megapixels, crop, allow_upscale,
+                               resize_method, output_width, output_height)
+        frames = []
+        for k in range(start, start + length):
+            index = min(len(images) - 1, max(0, math.ceil((k + 0.5) * frame_rate / rc.FPS) - 1))
+            pixels = (images[index, ..., :3].detach().cpu().clamp(0, 1).numpy() * 255).round().astype(np.uint8)
+            frames.append(transform_pixels(pixels, geometry))
+        window = torch.from_numpy(np.stack(frames)).float().div_(255)
+        sound = None
+        if audio is not None:
+            rate = audio["sample_rate"]
+            begin, count = round(start / rc.FPS * rate), round(length / rc.FPS * rate)
+            waveform = audio["waveform"][..., begin:begin + count].clone()
+            if waveform.shape[-1] < count:
+                waveform = F.pad(waveform, (0, count - waveform.shape[-1]))
+            sound = {"waveform": waveform, "sample_rate": rate}
+        marker_list, marker_notes = rc.parse_markers(markers, length)
+        context = {"window": window, "markers": marker_list, "length": length, "width": geometry["width"],
+                   "height": geometry["height"], "fps": rc.FPS, "window_start": start, "window_time": start / rc.FPS,
+                   "audio": sound, "source": "frames", "geometry": geometry}
+        selected, anchor1, anchor2 = anchor_outputs(window, marker_list, geometry)
+        return io.NodeOutput(selected, context, window, sound, anchor1, anchor2,
+                             ui={"text": [*notes, *marker_notes], "geometry": [geometry]})
 
 
 class WN_RippleApply:
@@ -388,8 +492,8 @@ class WN_RippleApply:
     )
     DESCRIPTION = (
         "Builds the conditioning the H3 Ripple LoRA expects: the original window as a guide plus one "
-        "guide per edited frame. Edited images come from the edits attached on Ripple Clip, or from the "
-        "edited_images input (one image per marker, in time order), which takes precedence. Use the FL2VA model "
+        "guide per edited frame. Explicit edited_anchor inputs override the chronological edited_images batch, "
+        "which overrides uploaded edits. Use the FL2VA model "
         "with the Ripple LoRA, a BasicGuider (CFG 1) and any H3 sampler. The default prompt works for every edit. "
         "Re-runs with new edits reuse the encoded prompt and source clip."
     )
@@ -407,41 +511,53 @@ class WN_RippleApply:
             "optional": {
                 "edited_images": ("IMAGE", {"tooltip": "Edited frames from an in-graph editor: one per marker, in time "
                                                        "order. Overrides the images attached on Ripple Clip."}),
+                "edited_anchor_1": ("IMAGE", {"tooltip": "Exactly one edited image for marker 1. Overrides its batch or upload."}),
+                "edited_anchor_2": ("IMAGE", {"tooltip": "Exactly one edited image for marker 2. Requires a second marker."}),
             },
         }
 
-    def apply(self, clip, vae, ripple, prompt, edited_images=None, edited_image=None):
+    def apply(self, clip, vae, ripple, prompt, edited_images=None,
+              edited_anchor_1=None, edited_anchor_2=None):
         import node_helpers
         from comfy_extras.nodes_minimax_h3 import _empty_av_latent
 
-        if edited_images is None:
-            edited_images = edited_image  # input name used before multiple markers
         width, height, length = ripple["width"], ripple["height"], ripple["length"]
-        markers = ripple.get("markers") or [{"frame": ripple["edit_frame"], "edited": ""}]
+        markers, _ = rc.parse_markers(ripple["markers"], length)
+        geometry = ripple["geometry"]
+        explicit = {1: edited_anchor_1, 2: edited_anchor_2}
+        for identity, image in explicit.items():
+            if image is not None:
+                if not any(m["id"] == identity for m in markers):
+                    raise ValueError(f"edited_anchor_{identity} needs marker {identity} on Ripple Clip.")
+                if len(image) != 1:
+                    raise ValueError(f"edited_anchor_{identity} must contain exactly one image.")
         window = ripple["window"]
         notes, checks, keyframes_edit, unchanged = [], [], [], 0
         if edited_images is not None and len(edited_images) != len(markers):
             notes.append(f"edited_images has {len(edited_images)} image(s) for {len(markers)} marker(s); "
                          "missing ones use the attached edits.")
         missing = [m["frame"] + 1 for i, m in enumerate(markers)
-                   if not (edited_images is not None and i < len(edited_images)) and not m.get("edited")]
+                   if explicit.get(m["id"]) is None
+                   and not (edited_images is not None and i < len(edited_images)) and not m.get("edited")]
         if missing:
             frames = ", ".join(str(frame) for frame in missing)
             raise ValueError(f"No edited image for frame{'s' if len(missing) > 1 else ''} {frames}: upload, drop or "
                              "paste one on its Ripple Clip card, or connect edited_images.")
-        stale = set(rc.stale_markers(markers, int(ripple.get("window_start", 0))))
+        stale = set(rc.stale_markers(markers, int(ripple.get("window_start", 0)), geometry["crop"],
+                                     ripple.get("source"), ripple.get("source_version")))
         window_np = None
         for index, marker in enumerate(markers):
             frame, label = int(marker["frame"]), f"Frame {int(marker['frame']) + 1}"
-            from_input = edited_images is not None and index < len(edited_images)
-            edited = edited_images[index:index + 1] if from_input else load_input_image(marker["edited"])
+            direct = explicit.get(marker["id"])
+            from_input = direct is not None or (edited_images is not None and index < len(edited_images))
+            edited = direct if direct is not None else (edited_images[index:index + 1] if from_input
+                                                        else load_input_image(marker["edited"]))
             if frame in stale and not from_input:
-                notes.append(f"{label}: its edit was made for another frame (the marker or window moved after "
-                             "uploading). Re-export the frame or move the marker back.")
-            aspect = rc.aspect_note((int(edited.shape[2]), int(edited.shape[1])), (width, height))
+                notes.append(f"{label}: its edit was made for another frame, crop or source. Re-export the frame or restore its selection.")
+            aspect = rc.aspect_note((int(edited.shape[2]), int(edited.shape[1])), tuple(geometry["content_rect"][2:]))
             if aspect:
                 notes.append(f"{label}: {aspect}")
-            edited = to_canvas(edited, width, height)
+            edited = edit_to_canvas(edited, geometry)
             if window_np is None:
                 window_np = window.cpu().numpy()
             match = rc.match_edited_frame(window_np, edited[0].cpu().numpy(), frame)
@@ -463,7 +579,8 @@ class WN_RippleApply:
         keyframes = [{"resolved_frame_index": 0, "latent": encode_source(vae, ripple)}, *keyframes_edit]
         positive = node_helpers.conditioning_set_values(positive, {"minimax_keyframes": keyframes})
         where = ", ".join(f"{m['frame'] + 1} {c}" for m, c in zip(markers, checks))
-        text = [f"{len(markers)} edited frame{'s' if len(markers) > 1 else ''} of {length} ({width}x{height}): "
+        cw, ch = geometry["content_rect"][2:]
+        text = [f"{len(markers)} edited frame{'s' if len(markers) > 1 else ''} of {length} ({cw}x{ch}): "
                 f"frames {where} (✓ = image matches its source frame)", *notes]
         return {"ui": {"text": text}, "result": (positive, latent)}
 
@@ -474,12 +591,14 @@ SAVE_CHOICES = ("shot + comparison", "shot", "comparison", "nothing")
 def comparison_frames(images: torch.Tensor, ripple: dict) -> torch.Tensor:
     """Source | result side by side with a yellow bar on every edited frame."""
     count = min(len(images), ripple["length"])
-    images = images[:count]
-    source = ripple["window"][:count].to(images.device, images.dtype)
+    images = trim_content(images[:count], ripple["geometry"])
+    source = trim_content(ripple["window"][:count], ripple["geometry"]).to(images.device, images.dtype)
     if source.shape[1:3] != images.shape[1:3]:
-        source = to_canvas(source, int(images.shape[2]), int(images.shape[1]))
+        import comfy.utils
+        source = comfy.utils.common_upscale(source.movedim(-1, 1), int(images.shape[2]), int(images.shape[1]),
+                                            "lanczos", "disabled").movedim(1, -1)
     comparison = torch.cat((source, images[..., :3]), dim=2).clone()
-    for marker in ripple.get("markers") or [{"frame": ripple["edit_frame"]}]:
+    for marker in ripple["markers"]:
         if marker["frame"] < count:
             comparison[marker["frame"], :6] = torch.tensor([1.0, 0.8, 0.0], dtype=comparison.dtype)
     return comparison
@@ -521,8 +640,8 @@ class WN_RippleOutput:
     def output(self, images, ripple, save=SAVE_CHOICES[0], filename_prefix="ripple/edit", prompt=None,
                extra_pnginfo=None):
         count = min(len(images), ripple["length"])
-        images = images[:count]
-        comparison = comparison_frames(images, ripple)
+        comparison = comparison_frames(images[:count], ripple)
+        images = trim_content(images[:count], ripple["geometry"])
         fps, audio, previews = float(ripple["fps"]), ripple.get("audio"), []
         if save in ("shot + comparison", "shot", "comparison"):
             try:
@@ -544,6 +663,14 @@ class WN_RippleOutput:
         return {"ui": {"images": previews, "animated": (True,)}, "result": result}
 
 
+def query_geometry(query):
+    return {"megapixels": float(query.get("megapixels", rc.DEFAULT_MEGAPIXELS)),
+            "crop": query.get("crop", ""),
+            "allow_upscale": str(query.get("allow_upscale", "false")).lower() in ("1", "true", "yes"),
+            "resize_method": query.get("resize_method", "lanczos"),
+            "output_width": int(query.get("output_width", 0)), "output_height": int(query.get("output_height", 0))}
+
+
 def register_ripple_routes():
     """/wepenerd/ripple/info: source facts for the timeline, without running the graph."""
     try:
@@ -559,6 +686,7 @@ def register_ripple_routes():
     async def ripple_info(request):
         try:
             info = probe(video_path(request.query.get("video", "")))
+            info["geometry"] = rc.geometry(info["width"], info["height"], **query_geometry(request.query))
         except (OSError, ValueError, av.error.FFmpegError) as error:
             return web.json_response({"error": str(error)}, status=404)
         return web.json_response(info)
@@ -567,7 +695,7 @@ def register_ripple_routes():
     async def ripple_frame(request):
         query = request.query
         try:
-            data, name = frame_png(query.get("video", ""), int(query.get("frame", "0")), query.get("resolution", ""))
+            data, name = frame_png(query.get("video", ""), int(query.get("frame", "0")), **query_geometry(query))
         except (OSError, ValueError, av.error.FFmpegError) as error:
             return web.json_response({"error": str(error)}, status=404)
         # Thumbnails carry the file's version token, so the browser may keep them; downloads never cache.
@@ -582,11 +710,13 @@ def register_ripple_routes():
 
 NODE_CLASS_MAPPINGS = {
     "WN_RippleClip": WN_RippleClip,
+    "WN_RippleFromFrames": WN_RippleFromFrames,
     "WN_RippleApply": WN_RippleApply,
     "WN_RippleOutput": WN_RippleOutput,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "WN_RippleClip": "H3 Ripple Clip (WepeNerd)",
+    "WN_RippleFromFrames": "H3 Ripple From Frames (WepeNerd)",
     "WN_RippleApply": "H3 Ripple Apply (WepeNerd)",
     "WN_RippleOutput": "H3 Ripple Output (WepeNerd)",
 }

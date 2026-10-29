@@ -189,7 +189,7 @@ class NativeScheduleTests(unittest.TestCase):
             x = torch.randn(1, 2, 4, 6)*.1
             sigma = torch.tensor([1.2]) # Beyond the model's normal sigma start.
             default = self.run_outer(context, guider, lambda: self.forward(model, x, sigma))
-            # Phase 2 behavior: no descriptor gates and no APPLY_MODEL wrapper.
+            # Compare against ungated dispatch without an APPLY_MODEL wrapper.
             self.assertEqual(context.descriptors, ())
             model.remove_wrappers_with_key(pe.WrappersMP.APPLY_MODEL, ml.WRAPPER_KEY)
             reference = self.run_outer(context, guider, lambda: self.forward(model, x, sigma))

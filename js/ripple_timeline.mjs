@@ -1,44 +1,109 @@
-// H3 Ripple timeline rules (mirror of ripple_core.py). Pure functions, testable with node --test.
+// Ripple timeline and geometry rules shared with ripple_core.py.
 
 export const FPS = 24;
-const CANVAS_MULTIPLE = 32;
+// Native MiniMax H3 accepts at most 3600 frames; 3592 is the last complete 17k+5 choice.
+export const MAX_DURATION_FRAMES = 3592;
+export const DURATION_OPTIONS = Array.from({ length: (MAX_DURATION_FRAMES - 5) / 17 + 1 }, (_, index) => {
+    const frames = 5 + index * 17;
+    return [frames, `${frames} frames · ${(frames / FPS).toFixed(2)} s`];
+});
 
-// Short edge from a resolution value such as "384".
-export function shortEdge(label) {
-    const edge = parseInt(String(label), 10);
-    return Number.isFinite(edge) && edge > 0 ? edge : 384;
-}
-
-// Same rule as ripple_core.canvas_size: the source aspect at this short edge, sides rounded to 32.
-export function canvasSize(width, height, edge) {
-    if (!(width > 0 && height > 0)) return null;
-    const round = (value) => Math.max(CANVAS_MULTIPLE, Math.round(value / CANVAS_MULTIPLE) * CANVAS_MULTIPLE);
-    return width >= height ? { width: round(edge * width / height), height: edge }
-        : { width: edge, height: round(edge * height / width) };
-}
-
-// True when an edited image's aspect differs from the frame's by more than 1% (it would be centre-cropped).
+// Notice substantial reshaping by an external editor.
 export function aspectMismatch(imageWidth, imageHeight, canvas) {
     if (!canvas || !(imageWidth > 0 && imageHeight > 0)) return false;
-    return Math.abs((imageWidth / imageHeight) / (canvas.width / canvas.height) - 1) > 0.01;
+    return Math.abs((imageWidth / imageHeight) / (canvas.width / canvas.height) - 1) > 0.05;
 }
 
-export function parseLength(label) {
-    const frames = parseInt(String(label), 10);
-    return Number.isFinite(frames) && frames >= 5 && frames % 17 === 5 ? frames : 107;
+export function durationFrames(seconds) {
+    const value = Number(seconds);
+    return Number.isFinite(value) ? Math.max(5, 5 + 17 * Math.round((value * FPS - 5) / 17)) : 107;
+}
+
+// Resize a window around its opposite edge, leaving anchors on their source frames.
+export function resizeWindow(available, start, length, side, frame) {
+    const end = start + length;
+    const limit = side === "left" ? end : available - start;
+    const wanted = side === "left" ? end - frame : frame - start;
+    const count = Math.min(MAX_DURATION_FRAMES, Math.max(5, durationFrames(wanted / FPS)), Math.max(5, 5 + 17 * Math.floor((limit - 5) / 17)));
+    return { start: side === "left" ? end - count : start, length: count };
+}
+
+export function retainSourceFrames(markers, oldStart, newStart, length) {
+    const used = new Set();
+    const result = markers.map((marker) => ({ ...marker, frame: oldStart + marker.frame - newStart }));
+    for (const marker of result) if (marker.frame >= 0 && marker.frame < length) used.add(marker.frame);
+    for (const marker of result) {
+        if (marker.frame >= 0 && marker.frame < length) continue;
+        const frame = freeFrame([...used], Math.min(length - 1, Math.max(0, marker.frame)), length);
+        marker.frame = frame >= 0 ? frame : Math.min(length - 1, Math.max(0, marker.frame));
+        used.add(marker.frame);
+    }
+    return result;
+}
+
+export function parseCrop(value) {
+    let crop = value;
+    try { if (typeof crop === "string") crop = crop ? JSON.parse(crop) : [0, 0, 1, 1]; } catch (_) { crop = null; }
+    if (!Array.isArray(crop) || crop.length !== 4 || crop.some((n) => !Number.isFinite(Number(n)))) return [0, 0, 1, 1];
+    const x = Math.min(1, Math.max(0, Number(crop[0]))), y = Math.min(1, Math.max(0, Number(crop[1])));
+    const width = Math.min(1 - x, Number(crop[2])), height = Math.min(1 - y, Number(crop[3]));
+    if (width <= 0 || height <= 0) return [0, 0, 1, 1];
+    return [x, y, width, height].map((v) => Number(v.toFixed(8)));
+}
+
+export function cropMatches(a, b) {
+    const left = parseCrop(a), right = parseCrop(b);
+    return left.every((value, i) => Math.abs(value - right[i]) < 1e-6);
+}
+
+export function cropForAspect(sourceAspect, targetAspect) {
+    const ratio = targetAspect / sourceAspect;
+    const width = Math.min(1, ratio), height = Math.min(1, 1 / ratio);
+    return [(1 - width) / 2, (1 - height) / 2, width, height];
+}
+
+export function dragCrop(crop, handle, dx, dy, ratio = null) {
+    const [x, y, width, height] = parseCrop(crop);
+    if (handle === "move") return [Math.min(1 - width, Math.max(0, x + dx)), Math.min(1 - height, Math.max(0, y + dy)), width, height];
+    const left = handle.includes("w"), top = handle.includes("n");
+    let w = Math.min(left ? x + width : 1 - x, Math.max(0.02, width + (left ? -dx : dx)));
+    let h = Math.min(top ? y + height : 1 - y, Math.max(0.02, height + (top ? -dy : dy)));
+    if (ratio) {
+        if (Math.abs(dx) >= Math.abs(dy * ratio)) h = w / ratio;
+        else w = h * ratio;
+        const scale = Math.min(1, (left ? x + width : 1 - x) / w, (top ? y + height : 1 - y) / h);
+        w *= scale; h *= scale;
+    }
+    return [left ? x + width - w : x, top ? y + height - h : y, w, h];
+}
+
+// Same sizing as ripple_core: crop once, fit to a pixel budget, pad only for inference.
+export function outputGeometry(width, height, settings = {}) {
+    if (!(width > 0 && height > 0)) return null;
+    const [x, y, w, h] = parseCrop(settings.crop);
+    const x0 = Math.min(width - 1, Math.round(x * width)), y0 = Math.min(height - 1, Math.round(y * height));
+    const cropWidth = Math.max(1, Math.min(width, Math.round((x + w) * width)) - x0);
+    const cropHeight = Math.max(1, Math.min(height, Math.round((y + h) * height)) - y0);
+    let scale = Number(settings.output_width) > 0 && Number(settings.output_height) > 0
+        ? Math.min(Number(settings.output_width) / cropWidth, Number(settings.output_height) / cropHeight)
+        : Math.sqrt(Number(settings.megapixels ?? 0.25) * 1e6 / (cropWidth * cropHeight));
+    if (!settings.allow_upscale) scale = Math.min(1, scale);
+    const resultWidth = Math.max(2, 2 * Math.floor(cropWidth * scale / 2)), resultHeight = Math.max(2, 2 * Math.floor(cropHeight * scale / 2));
+    return { width: resultWidth, height: resultHeight,
+        canvasWidth: Math.ceil(resultWidth / 32) * 32, canvasHeight: Math.ceil(resultHeight / 32) * 32,
+        crop: [x0, y0, cropWidth, cropHeight] };
 }
 
 export function gridFrames(duration, firstTime = 0) {
     return Math.max(0, Math.floor(Math.max(0, duration - firstTime) * FPS + 0.5));
 }
 
-// Clamp a window into the source; never pads. Returns {start, length, edit}.
-export function fitWindow(available, start, length, edit) {
+// Clamp a window into the source; never pads.
+export function fitWindow(available, start, length) {
     if (available >= 5 && length > available) length = 17 * Math.floor((available - 5) / 17) + 5;
     const maxStart = Math.max(0, available - length);
     start = Math.min(Math.max(0, Math.round(start)), maxStart);
-    edit = Math.min(Math.max(0, Math.round(edit)), Math.max(0, length - 1));
-    return { start, length, edit };
+    return { start, length };
 }
 
 // Source time (seconds on the media timeline) at which the browser shows grid frame k. FFmpeg's
@@ -92,41 +157,31 @@ export function tickStep(totalSeconds, width) {
     return steps.find((step) => step >= wanted) ?? 1200;
 }
 
-// ---- several edited-frame markers ----------------------------------------------------------
-
-export const MAX_MARKERS = 4;
-
-// Parse the node's markers JSON; falls back to one marker at editFrame. Sorted, unique, clamped.
-export function parseMarkers(json, editFrame, length) {
+// Marker IDs stay stable while the batch remains in time order.
+export function parseMarkers(json, length) {
     let items = [];
     try { items = json ? JSON.parse(json) : []; } catch (_) { items = []; }
-    if (!Array.isArray(items) || !items.length) items = [{ frame: editFrame }];
-    const out = []; const seen = new Set();
+    if (!Array.isArray(items) || !items.length) items = [{ id: 1, frame: 0 }];
+    const out = []; const seen = new Set(); const ids = new Set();
     for (const item of items) {
         const raw = typeof item === "object" && item ? item.frame : item;
-        const frame = Math.min(Math.max(0, Math.round(Number(raw) || 0)), Math.max(0, length - 1));
-        if (seen.has(frame)) continue;
+        let frame = Math.min(Math.max(0, Math.round(Number(raw) || 0)), Math.max(0, length - 1));
+        if (seen.has(frame)) { const free = freeFrame([...seen], frame, length); if (free >= 0) frame = free; }
         seen.add(frame);
-        out.push({ frame, edited: (item && item.edited) || "", edited_at: item && Number.isFinite(item.edited_at) ? item.edited_at : null });
+        let id = item?.id;
+        if (!Number.isInteger(id) || id < 1 || ids.has(id)) { id = 1; while (ids.has(id)) id++; }
+        ids.add(id);
+        out.push({ id, frame, edited: (item && item.edited) || "", edited_at: item && Number.isFinite(item.edited_at) ? item.edited_at : null,
+            ...(item?.edited_crop != null ? { edited_crop: parseCrop(item.edited_crop) } : {}),
+            ...(item?.edited_source ? { edited_source: { video: String(item.edited_source.video ?? ""), version: String(item.edited_source.version ?? "") } } : {}) });
     }
     out.sort((a, b) => a.frame - b.frame);
-    return out.slice(0, MAX_MARKERS);
+    return out;
 }
 
 // One marker on the window's first frame (ripple_core.default_markers).
 export function defaultMarkers() {
-    return [{ frame: 0, edited: "", edited_at: null }];
-}
-
-// After a length change: markers without an edit keep their relative place in the window; markers with an
-// edit stay on their frame (so the edit still matches) unless it no longer fits.
-export function rescaleMarkers(markers, oldLength, newLength) {
-    if (!(oldLength > 1) || oldLength === newLength) return markers.map((m) => ({ ...m }));
-    return markers.map((m) => ({
-        ...m,
-        frame: m.edited ? Math.min(m.frame, newLength - 1)
-            : Math.min(newLength - 1, Math.round((m.frame * (newLength - 1)) / (oldLength - 1))),
-    }));
+    return [{ id: 1, frame: 0, edited: "", edited_at: null }];
 }
 
 // A free frame for a new marker: the preferred frame if free, else the nearest free one, else -1.

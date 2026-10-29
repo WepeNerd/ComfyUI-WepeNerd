@@ -44,10 +44,10 @@ plus Torch supplied by ComfyUI. It does not install GPU wheels, models, or exter
 
 ## Quick start
 
-Open the [example workflow](examples/resolution-speedpaint.json). Resolution
-Suggest controls Speedpaint's width and height; paint and click **Queue** to
-preview the result. Connect Speedpaint to **VAE Encode** to use it in a generation
-workflow.
+Add **Speedpaint** and connect its IMAGE output to **Preview Image**. Paint and
+click **Queue** to preview the result. Connect **Resolution Suggest** to its width
+and height inputs to control the canvas size, or **VAE Encode** to use the painting
+in a generation workflow.
 
 - **Speedpaint:** choose **New** for a blank background. **Load** runs a connected
   `image` upstream and imports its first image; without a connection it opens the
@@ -60,18 +60,17 @@ workflow.
   possible from rounding.
 - **Load Video (Upload):** upload/select a video under **WepeNerd/Video** and
   connect `images` to an IMAGE input. Pick the clip with `skip_first_frames` and
-  `frame_load_cap` (121 by default, 0 for all, which keeps long videos from filling
-  RAM); large skips jump straight there. The node shows what will load before you run it, and the muted preview
+  `frame_load_cap` (121 by default; 0 loads all frames); large skips jump straight
+  there. The node shows what will load before you run it, and the muted preview
   loops over exactly that clip. A format preset trims the frame count to a model's
   rule and sets its frame rate. Connect `audio` downstream to keep the clip's
   soundtrack, or disable `load_audio` to skip audio decoding.
 - **Save Video:** connect `images` (and `audio`/`mask` if you have them) to
-  **WepeNerd/Video › Save Video**. MP4 · H.264 plays everywhere; pick WebM, ProRes,
+  **WepeNerd/Video › Save Video**. MP4 · H.264 has broad player support; pick WebM, ProRes,
   FFV1, GIF or WebP when you need transparency. Drop the saved file onto the canvas
   to reload its workflow.
 - **Liquify:** load an image, or connect IMAGE and Queue once to see its preview.
   Drag to warp, use Undo/Redo, then Queue to render at the source resolution.
-  Try the [Liquify example](examples/liquify.json).
 - **Masked LoRA:** connect a native Krea2 MODEL, select a LoRA, and open **Edit mask**.
   Empty masks have no effect. This node is specific to Krea2 and remains in Beta.
 - **Qwen Edit Mask:** open or drop an image (or connect IMAGE and click **Load input**),
@@ -85,23 +84,25 @@ workflow.
   mask preview and finer cleanup controls. Pixels where the final mask is zero
   are copied exactly from the source. See the [controls and limits](docs/nodes.md#image-edit-alignment).
 
-- **H3 Ripple:** open the [H3 Ripple workflow](example_workflows/H3_Ripple.json) (also under
-  **Templates › ComfyUI-WepeNerd**). It needs the MiniMax H3 FL2VA model, its text encoder and video
-  VAE, and the `H3_Ripple_v1` LoRA. In **Ripple Clip**, upload a video, drag the blue window to the shot
-  and move the marker to the frame you want to edit. **Download frame**, edit it, then upload, drop or
-  paste (Ctrl+V) it onto its card and **Run**. When an edit needs another anchor (say, a view of the
-  subject the first frame doesn't show), **+ Add frame** and give the second frame the same change.
-  Ripple Output saves the shot with its source audio and a source | result comparison. Re-running with
-  new edits skips the video decode, prompt encoding and source encoding.
-  See [H3 Ripple](docs/nodes.md#h3-ripple) for all controls.
+- **H3 Ripple:** open the [frame-upload workflow](example_workflows/H3_Ripple.json), or the
+  [local image-editor workflow](example_workflows/H3_Ripple_Local_Editor.json) with two complete
+  Qwen Image 2.1 editing branches. Both use **Ripple Clip → Ripple Apply → Ripple Output**
+  and require MiniMax H3 FL2VA, its text encoder and video VAE, and `H3_Ripple_v1`.
+  Pick a video, time window, duration and megapixels; preview the crop before editing. The starting
+  size is **0.25 MP**, with **107 frames / 4.46 seconds**. Download and edit a marked frame, then
+  upload, drop or paste it onto its card. Add a second anchor when another view needs the same change.
+  Changing only megapixels resizes the existing edits; changing the crop or frame needs a fresh review.
+  The local-editor workflow starts with Ripple Output muted: run and review both Qwen images first,
+  then enable Ripple Output and run the video. Source audio and a source | result comparison are saved.
+  See [H3 Ripple](docs/nodes.md#h3-ripple) for model files, geometry and anchor routing.
 
 See the [node guide](docs/nodes.md) for controls, inputs, outputs, and limitations.
 
 ## Saving paintings
 
 Speedpaint supports dimensions from 64 to 4096 pixels and PNG, JPEG, or WebP imports.
-It has file import rather than an upstream IMAGE socket. Resizing painted work
-resizes the whole composition with Lanczos.
+Use **Load** to import a file or the first image from the optional IMAGE input.
+Resizing painted work resizes the whole composition with Lanczos.
 
 Paintings are stored in `ComfyUI/input/wepenerd_speedpaint`. Copy that folder with
 your workflows when moving machines. Standard Save/Export and Queue wait for
@@ -110,9 +111,8 @@ history does not persist after reloading.
 
 ## Compatibility
 
-Tested with ComfyUI 0.34.0, frontend 1.51.10, Python 3.12, and Windows. Browser and
-CPU/CUDA layer checks are included; physical tablet behavior and full-model Krea2
-image fidelity have not been comprehensively validated.
+Use a current ComfyUI version with the native model nodes required by your workflow.
+Python 3.10 or newer is required.
 
 Masked LoRA supports native floating-point and INT8 ConvRot Krea2. Spatial masks
 can influence pixels outside the painted region through attention and denoising.

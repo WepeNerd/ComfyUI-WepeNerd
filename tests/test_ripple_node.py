@@ -66,7 +66,7 @@ try:
     spec = importlib.util.spec_from_file_location("wepenerd_ripple_test", ROOT / "ripple_node.py")
     ripple = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(ripple)
-    import save_video_node  # imported now so it binds the stand-ins too (Ripple Output saves through it)
+    import save_video_node  # Bind the save module to the same stand-ins.
     MODULES = {"ripple_core": ripple.rc, "load_video_node": ripple.lv, "save_video_node": save_video_node}
 finally:
     for name, module in _saved.items():
@@ -148,7 +148,8 @@ class RippleTest(unittest.TestCase):
 
     def ripple_context(self, markers, start=0):
         window = torch.rand(22, 64, 96, 3)
-        return {"window": window, "markers": markers, "edit_frame": markers[0]["frame"], "length": 22,
+        markers, _ = rc.parse_markers(markers, 22)
+        return {"window": window, "markers": markers, "geometry": rc.geometry(96, 64, 0.006144), "length": 22,
                 "width": 96, "height": 64, "fps": 24, "audio": None, "window_start": start,
                 "window_key": ("w", start)}
 
@@ -192,76 +193,169 @@ class DecodeTest(RippleTest):
 
 
 class ClipTest(RippleTest):
-    def test_clip_node_end_to_end(self):
-        write_numbered(self.root / "v.mkv", 24 * 10, 24, size=(192, 108))
-        out = ripple.WN_RippleClip().select("v.mkv", "107 frames (4.46 s)", rc.DEFAULT_RESOLUTION, 200, 50, "")
-        frame, context, window, audio = out["result"]
-        self.assertEqual((context["window_start"], context["edit_frame"]), (240 - 107, 50))
-        self.assertEqual(tuple(window.shape), (107, 384, 672, 3))
-        self.assertEqual(tuple(frame.shape), (1, 384, 672, 3))
-        self.assertTrue(torch.equal(frame[0], window[50]))
+    def select(self, **kwargs):
+        values = dict(video="v.mkv", duration=107/24, megapixels=.25, window_start=0,
+                      markers=rc.DEFAULT_MARKERS_JSON)
+        return ripple.WN_RippleClip().select(**{**values, **kwargs})
+
+    def test_clip_preserves_source_framing_and_returns_unpadded_anchors(self):
+        write_numbered(self.root / "v.mkv", 240, 24, size=(192, 108))
+        out = self.select(window_start=200, markers=json.dumps([{"id": 1, "frame": 50}]))
+        frame, context, window, audio, anchor1, anchor2 = out["result"]
+        self.assertEqual(context["window_start"], 133)
+        self.assertEqual(tuple(window.shape), (107, 128, 192, 3))
+        self.assertEqual(tuple(frame.shape), (1, 108, 192, 3))
+        self.assertTrue(torch.equal(frame, anchor1))
+        self.assertEqual(len(anchor2), 0)
+        self.assertTrue(torch.equal(frame[0], window[50, 10:118]))
         self.assertEqual(out["ui"]["binding"], [133, 107, [50], "v.mkv"])
         self.assertIsNone(audio)
-        self.assertIn("Window moved", " ".join(out["ui"]["text"]))
 
-    def test_new_nodes_start_with_one_marker(self):
-        default = ripple.WN_RippleClip.INPUT_TYPES()["optional"]["markers"][1]["default"]
-        self.assertEqual([m["frame"] for m in json.loads(default)], [0])
-        write_numbered(self.root / "v.mkv", 24 * 6, 24)
-        out = ripple.WN_RippleClip().select("v.mkv", rc.DEFAULT_LENGTH_LABEL, rc.DEFAULT_RESOLUTION, 0, 0, default)
-        self.assertEqual(out["ui"]["binding"][2], [0])
-        self.assertEqual(len(out["ui"]["text"]), 1)
+    def test_clean_schema_and_default_marker(self):
+        inputs = ripple.WN_RippleClip.INPUT_TYPES()
+        self.assertEqual(list(inputs["required"]), ["video", "duration", "megapixels", "window_start", "markers"])
+        self.assertEqual(json.loads(inputs["required"]["markers"][1]["default"])[0]["id"], 1)
+        self.assertEqual(ripple.WN_RippleClip.RETURN_NAMES[-2:], ("anchor_1", "anchor_2"))
+        write_numbered(self.root / "v.mkv", 240, 24)
+        self.assertIs(ripple.WN_RippleClip.VALIDATE_INPUTS("v.mkv", 12.0, 1.3), True)
+        self.assertIsInstance(ripple.WN_RippleClip.VALIDATE_INPUTS("v.mkv", 0.0, .25), str)
 
-    def test_one_frame_per_marker_in_time_order(self):
-        write_numbered(self.root / "v.mkv", 24 * 10, 24, size=(192, 108))
-        markers = json.dumps([{"frame": 60, "edited": ""}, {"frame": 5}, {"frame": 60}])
-        out = ripple.WN_RippleClip().select("v.mkv", "107 frames (4.46 s)", rc.DEFAULT_RESOLUTION, 0, 0, markers)
-        frames, context, window, _ = out["result"]
-        self.assertEqual([m["frame"] for m in context["markers"]], [5, 60])
-        self.assertTrue(torch.equal(frames[0], window[5]) and torch.equal(frames[1], window[60]))
-        self.assertTrue(any("Two markers" in t for t in out["ui"]["text"]))
+    def test_anchor_identity_survives_crossing(self):
+        write_numbered(self.root / "v.mkv", 240, 24)
+        out = self.select(markers=json.dumps([{"id": 1, "frame": 60}, {"id": 2, "frame": 5}]))
+        frames, context, _, _, anchor1, anchor2 = out["result"]
+        self.assertEqual([(m["id"], m["frame"]) for m in context["markers"]], [(2, 5), (1, 60)])
+        self.assertTrue(torch.equal(anchor1, frames[1:2]))
+        self.assertTrue(torch.equal(anchor2, frames[:1]))
 
-    def test_changing_only_the_markers_reuses_the_decoded_window(self):
-        write_numbered(self.root / "v.mkv", 24 * 6, 24, audio=True)
-        clip = ripple.WN_RippleClip()
-        first = clip.select("v.mkv", "56 frames (2.33 s)", rc.DEFAULT_RESOLUTION, 10, 0, json.dumps([3, 40]))
+    def test_marker_changes_reuse_window_but_crop_changes_decode(self):
+        write_numbered(self.root / "v.mkv", 144, 24, audio=True)
+        first = self.select(duration=56/24, window_start=10, markers=json.dumps([3, 40]))
         with patch.object(ripple, "decode_grid_window", side_effect=AssertionError("decoded again")):
-            second = clip.select("v.mkv", "56 frames (2.33 s)", rc.DEFAULT_RESOLUTION, 10, 0,
-                                 json.dumps([{"frame": 3, "edited": "ripple_edits/x.png", "edited_at": 13}, 40]))
+            second = self.select(duration=56/24, window_start=10,
+                                 markers=json.dumps([{"id": 1, "frame": 4}, {"id": 2, "frame": 40}]))
         self.assertIs(first["result"][2], second["result"][2])
-        self.assertEqual(first["result"][1]["window_key"], second["result"][1]["window_key"])
-        audio = second["result"][3]
-        self.assertEqual(audio["sample_rate"], 8000)
-        self.assertEqual(audio["waveform"].shape[-1], round(56 / 24 * 8000))
-        # moving the window decodes again
-        third = clip.select("v.mkv", "56 frames (2.33 s)", rc.DEFAULT_RESOLUTION, 11, 0, json.dumps([3, 40]))
-        self.assertNotEqual(third["result"][1]["window_key"], first["result"][1]["window_key"])
+        self.assertEqual(second["result"][3]["waveform"].shape[-1], round(56/24*8000))
+        changed = self.select(duration=56/24, window_start=10, crop="[0.25,0,0.5,1]")
+        self.assertNotEqual(changed["result"][1]["window_key"], first["result"][1]["window_key"])
 
-    def test_labels_and_older_saved_values(self):
-        self.assertEqual(rc.LENGTH_LABELS[5], "107 frames (4.46 s)")
-        self.assertEqual(list(rc.RESOLUTIONS), ["352", "384", "544", "768"])
-        self.assertTrue(all("trained" not in label and "untested" not in label
-                            for label in [*rc.LENGTH_LABELS, *rc.RESOLUTIONS]))
-        write_numbered(self.root / "v.mkv", 24 * 6, 24, size=(192, 108))
-        clip = ripple.WN_RippleClip
-        self.assertIs(clip.VALIDATE_INPUTS("v.mkv", "124 frames (5.17 s, untested)", "384 (trained up to 107 frames)"),
-                      True)
-        self.assertIsInstance(clip.VALIDATE_INPUTS("v.mkv", "107 frames (4.46 s)", "123"), str)
-        out = clip().select("v.mkv", "22 frames (0.92 s)", "544 (trained up to 56 frames)", 0, 0, "")
-        self.assertEqual((out["result"][1]["width"], out["result"][1]["height"]), (960, 544))
-        self.assertEqual(len(out["ui"]["text"]), 1, "no notes for a plain selection")
+    def test_frame_endpoint_geometry_matches_selected_anchor(self):
+        write_numbered(self.root / "v.mkv", 144, 24, size=(320, 180))
+        settings = dict(megapixels=.012, crop="[0.25,0.1,0.5,0.8]", allow_upscale=False,
+                        resize_method="lanczos", output_width=0, output_height=0)
+        data, name = ripple.frame_png("v.mkv", 77, **settings)
+        exported = np.asarray(Image.open(io.BytesIO(data)))
+        out = self.select(duration=22/24, window_start=70, markers=json.dumps([{"id": 1,"frame": 7}]), **settings)
+        pixels = (out["result"][4][0].numpy()*255).round().astype(np.uint8)
+        np.testing.assert_array_equal(exported, pixels)
+        g=out["result"][1]["geometry"]
+        self.assertEqual(exported.shape[:2], (g["content_rect"][3], g["content_rect"][2]))
+        self.assertEqual(name, "v_f00077.png")
+        self.assertEqual(ripple.query_geometry({"megapixels":".012", "allow_upscale":"true"})["allow_upscale"], True)
 
-    def test_frame_png_matches_the_clip_output(self):
-        write_numbered(self.root / "v.mkv", 24 * 10, 24, size=(192, 108))
-        data, name = ripple.frame_png("v.mkv", 77, rc.DEFAULT_RESOLUTION)
-        image = np.asarray(Image.open(io.BytesIO(data)))
-        out = ripple.WN_RippleClip().select("v.mkv", "22 frames (0.92 s)", rc.DEFAULT_RESOLUTION, 70, 7, "")
-        self.assertEqual((image.shape, name), ((384, 672, 3), "v_f00077.png"))
-        diff = np.abs(image.astype(int) - (out["result"][0][0].numpy() * 255).round().astype(int)).max()
-        self.assertLessEqual(diff, 1)
+    def test_large_source_is_resized_per_decoded_frame(self):
+        write_numbered(self.root / "v.mkv", 22, 24, size=(1920, 1080))
+        with patch.object(ripple, "transform_pixels", wraps=ripple.transform_pixels) as transform:
+            out = self.select(duration=22/24, megapixels=.1)
+        self.assertEqual(transform.call_count, 22)
+        window = out["result"][2]
+        self.assertLess(window.numel()*window.element_size(), 35_000_000)
+        self.assertLess(out["result"][1]["width"], 500)
+
+    def test_codec_crop_pixels_and_edge_padding_are_consistent(self):
+        pixels=np.zeros((80,128,3),np.uint8)
+        pixels[:,:,0]=np.arange(128,dtype=np.uint8)[None,:]
+        pixels[:,:,1]=np.arange(80,dtype=np.uint8)[:,None]
+        with av.open(str(self.root/"v.mkv"),"w") as out:
+            stream=out.add_stream("ffv1",rate=24)
+            stream.width,stream.height,stream.pix_fmt=128,80,"bgr0"
+            for i in range(22):
+                for packet in stream.encode(av.VideoFrame.from_ndarray(pixels,format="rgb24")): out.mux(packet)
+            for packet in stream.encode(): out.mux(packet)
+        out=self.select(duration=22/24,crop="[0.25,0.25,0.5,0.5]")
+        expected=pixels[20:60,32:96]
+        actual=(out["result"][4][0].numpy()*255).round().astype(np.uint8)
+        np.testing.assert_array_equal(actual,expected)
+        window=(out["result"][2][0].numpy()*255).round().astype(np.uint8)
+        self.assertEqual(window.shape,(64,64,3))
+        np.testing.assert_array_equal(window[:12],np.repeat(expected[:1],12,axis=0))
+        np.testing.assert_array_equal(window[-12:],np.repeat(expected[-1:],12,axis=0))
+
+
+class GeometryTest(unittest.TestCase):
+    def test_duration_has_no_dataset_cap_and_fits_source(self):
+        self.assertEqual(rc.duration_frames(107/24), 107)
+        self.assertEqual(rc.duration_frames(20), 481)
+        self.assertEqual(rc.fit_window(240, 200, 481)[:2], (14, 226))
+
+    def test_crop_and_no_upscale_preserve_content_with_minimal_padding(self):
+        g=rc.geometry(1920,1080,.25,crop=[.25,0,.5,1])
+        self.assertEqual(g["source_rect"], [480,0,960,1080])
+        x,y,w,h=g["content_rect"]
+        self.assertLessEqual(w*h,250000)
+        self.assertLess(g["width"]-w,32)
+        self.assertLess(g["height"]-h,32)
+        self.assertEqual((w%2,h%2,g["width"]%32,g["height"]%32),(0,0,0,0))
+        small=rc.geometry(101,75,10)
+        self.assertEqual(small["content_rect"][2:],[100,74])
+        self.assertEqual(rc.normalized_crop(""),rc.normalized_crop([0,0,1,1]))
+
+    def test_fit_bounds_and_optional_upscale(self):
+        g=rc.geometry(1920,1080,2,output_width=800,output_height=800)
+        self.assertEqual(g["content_rect"][2:],[800,450])
+        bigger=rc.geometry(96,64,.25,allow_upscale=True)
+        self.assertGreater(bigger["content_rect"][2],96)
+        with self.assertRaises(ValueError): rc.geometry(96,64,.25,output_width=300)
+
+    def test_full_frame_editor_rounding_is_restored_without_a_crop(self):
+        g=rc.geometry(666,374,.25)
+        image=torch.zeros(1,384,672,3)
+        image[:,:,0:4,0]=1
+        image[:,:,-4:,1]=1
+        padded=ripple.edit_to_canvas(image,g)
+        content=ripple.trim_content(padded,g)
+        self.assertGreater(float(content[0,:,0,0].mean()),.7)
+        self.assertGreater(float(content[0,:,-1,1].mean()),.7)
 
 
 class ApplyTest(RippleTest):
+    def test_explicit_anchor_ids_override_chronological_batch_after_crossing(self):
+        context = self.ripple_context([{"id": 1, "frame": 17}, {"id": 2, "frame": 3}])
+        out = ripple.WN_RippleApply().apply(FakeClip(), FakeVAE(), context, "prompt",
+            edited_images=torch.full((2,64,96,3),.8),
+            edited_anchor_1=torch.full((1,64,96,3),.2), edited_anchor_2=torch.full((1,64,96,3),.6))
+        keyframes=out["result"][0][0][1]["minimax_keyframes"]
+        self.assertEqual([k["resolved_frame_index"] for k in keyframes],[0,3,17])
+        self.assertAlmostEqual(float(keyframes[1]["latent"].mean()),.6,places=3)
+        self.assertAlmostEqual(float(keyframes[2]["latent"].mean()),.2,places=3)
+
+    def test_mixed_explicit_batch_and_uploaded_edits(self):
+        Image.fromarray(np.full((64,96,3),153,np.uint8)).save(self.root/"edit.png")
+        context=self.ripple_context([{"id":1,"frame":2,"edited":"edit.png"},
+                                     {"id":2,"frame":8,"edited":"edit.png"},
+                                     {"id":3,"frame":17,"edited":"edit.png"}])
+        out=ripple.WN_RippleApply().apply(FakeClip(),FakeVAE(),context,"prompt",
+            edited_images=torch.full((2,64,96,3),.8),edited_anchor_1=torch.full((1,64,96,3),.2))
+        values=[float(k["latent"].mean()) for k in out["result"][0][0][1]["minimax_keyframes"][1:]]
+        np.testing.assert_allclose(values,[.2,.8,.6],atol=.004)
+
+    def test_explicit_second_anchor_requires_marker_and_exactly_one_image(self):
+        context=self.ripple_context([{"id":1,"frame":0}])
+        vae=FakeVAE()
+        with self.assertRaisesRegex(ValueError,"needs marker 2"):
+            ripple.WN_RippleApply().apply(FakeClip(),vae,context,"prompt",edited_anchor_2=torch.rand(1,64,96,3))
+        with self.assertRaisesRegex(ValueError,"exactly one"):
+            ripple.WN_RippleApply().apply(FakeClip(),vae,context,"prompt",edited_anchor_1=torch.rand(2,64,96,3))
+        self.assertEqual(vae.frames_encoded,[])
+
+    def test_changed_crop_is_reported_for_upload_but_not_connected_override(self):
+        Image.fromarray(np.full((64,96,3),153,np.uint8)).save(self.root/"edit.png")
+        context=self.ripple_context([{"id":1,"frame":2,"edited":"edit.png","edited_crop":[.25,0,.5,1]}])
+        out=ripple.WN_RippleApply().apply(FakeClip(),FakeVAE(),context,"prompt")
+        self.assertIn("another frame, crop or source", " ".join(out["ui"]["text"]))
+        out=ripple.WN_RippleApply().apply(FakeClip(),FakeVAE(),context,"prompt",edited_anchor_1=torch.rand(1,64,96,3))
+        self.assertNotIn("another frame, crop or source", " ".join(out["ui"]["text"]))
+
     def test_one_keyframe_per_marker_from_the_input_batch(self):
         context = self.ripple_context([{"frame": 3, "edited": ""}, {"frame": 17, "edited": ""}])
         edits = torch.stack([context["window"][3], context["window"][17]]) * 0.5
@@ -286,7 +380,7 @@ class ApplyTest(RippleTest):
         keyframes = out["result"][0][0][1]["minimax_keyframes"]
         self.assertEqual([k["resolved_frame_index"] for k in keyframes], [0, 2, 9])
         self.assertLess(abs(float(keyframes[1]["latent"].mean()) - 200 / 255), 1e-3)
-        # a batch input overrides the attachment for the markers it covers
+        # Batch images override attachments for the markers they cover.
         out = ripple.WN_RippleApply().apply(FakeClip(), vae, context, "prompt",
                                             edited_images=torch.zeros(1, 64, 96, 3))
         keyframes = out["result"][0][0][1]["minimax_keyframes"]
@@ -338,9 +432,17 @@ class ApplyTest(RippleTest):
 
 
 class OutputTest(RippleTest):
+    def test_padding_is_trimmed_from_shot_and_comparison(self):
+        g=rc.geometry(192,108,.25)
+        context={"window":torch.zeros(22,128,192,3),"length":22,"audio":None,"fps":24,
+                 "markers":[{"id":1,"frame":4}],"geometry":g}
+        images,audio,fps,compare=ripple.WN_RippleOutput().output(torch.ones(22,128,192,3),context,save="nothing")
+        self.assertEqual(tuple(images.shape),(22,108,192,3))
+        self.assertEqual(tuple(compare.shape),(22,108,384,3))
+
     def test_comparison_marks_every_edited_frame(self):
         context = {"window": torch.zeros(22, 32, 48, 3), "length": 22, "edit_frame": 4, "audio": None, "fps": 24,
-                   "markers": [{"frame": 4}, {"frame": 15}]}
+                   "markers": [{"frame": 4}, {"frame": 15}], "geometry": {"width":48,"height":32,"content_rect":[0,0,48,32]}}
         images, audio, fps, comparison = ripple.WN_RippleOutput().output(torch.ones(22, 32, 48, 3), context,
                                                                          save="nothing")
         self.assertEqual((tuple(comparison.shape), fps), ((22, 32, 96, 3), 24.0))
@@ -350,7 +452,7 @@ class OutputTest(RippleTest):
         rate, samples = 8000, round(22 / 24 * 8000)
         audio = {"waveform": torch.rand(1, 1, samples) * 0.2, "sample_rate": rate}
         context = {"window": torch.zeros(22, 32, 48, 3), "length": 22, "edit_frame": 4, "audio": audio, "fps": 24,
-                   "markers": [{"frame": 4}]}
+                   "markers": [{"frame": 4}], "geometry": {"width":48,"height":32,"content_rect":[0,0,48,32]}}
         with patch.object(save_video_node, "ProgressBar", Mock()):
             out = ripple.WN_RippleOutput().output(torch.rand(22, 32, 48, 3), context, save="shot + comparison",
                                                   filename_prefix="ripple/edit")
@@ -367,16 +469,49 @@ class OutputTest(RippleTest):
 
 
 class MarkerRulesTest(unittest.TestCase):
-    def test_markers_keep_their_edit_frame_token(self):
-        markers, _ = rc.parse_markers(json.dumps([{"frame": 9, "edited": "e.png", "edited_at": 19},
-                                                  {"frame": 2, "edited": "", "edited_at": 5}]), 0, 22)
-        self.assertEqual(markers, [{"frame": 2, "edited": "", "edited_at": None},
-                                   {"frame": 9, "edited": "e.png", "edited_at": 19}])
-        self.assertEqual(rc.stale_markers(markers, 10), [])
-        self.assertEqual(rc.stale_markers(markers, 11), [9])
+    def test_shorter_window_preserves_both_marker_ids_and_edits(self):
+        markers,_=rc.parse_markers([{"id":1,"frame":60,"edited":"a.png","edited_at":60},
+                                   {"id":2,"frame":90,"edited":"b.png","edited_at":90}],39)
+        self.assertEqual({m["id"] for m in markers},{1,2})
+        self.assertEqual({m["edited"] for m in markers},{"a.png","b.png"})
+        self.assertEqual({m["frame"] for m in markers},{37,38})
+        self.assertEqual(len(rc.stale_markers(markers,0)),2)
 
-    def test_empty_markers_mean_one_at_edit_frame(self):
-        self.assertEqual(rc.parse_markers("", 7, 22)[0], [{"frame": 7, "edited": "", "edited_at": None}])
+    def test_uploaded_source_identity_is_preserved_and_checked(self):
+        markers,_=rc.parse_markers([{"id":1,"frame":0,"edited":"e.png",
+                                    "edited_source":{"video":"a.mp4","version":"abc"}}],22)
+        self.assertEqual(rc.stale_markers(markers,0,source="a.mp4",version="abc"),[])
+        self.assertEqual(rc.stale_markers(markers,0,source="b.mp4",version="abc"),[0])
+        self.assertEqual(rc.stale_markers(markers,0,source="a.mp4",version="new"),[0])
+    def test_markers_keep_ids_and_provenance_after_sorting(self):
+        markers,_=rc.parse_markers([{"id":1,"frame":9,"edited":"e.png","edited_at":19,"edited_crop":[0,0,1,1]},
+                                    {"id":2,"frame":2}],22)
+        self.assertEqual([m["id"] for m in markers],[2,1])
+        self.assertEqual(rc.stale_markers(markers,10,[0,0,1,1]),[])
+        self.assertEqual(rc.stale_markers(markers,11,[0,0,1,1]),[9])
+        self.assertEqual(rc.stale_markers(markers,10,[.25,0,.5,1]),[9])
+
+    def test_no_hidden_anchor_limit_and_default_one(self):
+        self.assertEqual(len(rc.parse_markers([1,2,3,4,5,6],22)[0]),6)
+        self.assertEqual(rc.parse_markers("",22)[0][0]["frame"],0)
+
+
+class FromFramesTest(RippleTest):
+    def test_v3_loader_resamples_frames_and_slices_audio(self):
+        frames=torch.zeros(120,64,96,3)
+        for i in range(120): frames[i,:,:,2]=i/255
+        sound={"waveform":torch.arange(32000,dtype=torch.float32)[None,None],"sample_rate":8000}
+        out=ripple.WN_RippleFromFrames.execute(frames,30,22/24,.25,24,
+                json.dumps([{"id":1,"frame":17},{"id":2,"frame":3}]),audio=sound)
+        selected,context,window,audio,a1,a2=out.result
+        expected=[math.ceil((k+.5)*30/24)-1 for k in range(24,46)]
+        self.assertEqual(ids((window.numpy()*255).round().astype(np.uint8)),expected)
+        self.assertEqual(float(audio["waveform"][0,0,0]),8000)
+        self.assertEqual(audio["waveform"].shape[-1],round(22/24*8000))
+        self.assertTrue(torch.equal(a1,selected[1:2]))
+        self.assertTrue(torch.equal(a2,selected[:1]))
+        self.assertEqual(context["fps"],24)
+        self.assertEqual(ripple.WN_RippleFromFrames.define_schema().node_id,"WN_RippleFromFrames")
 
 
 if __name__ == "__main__":

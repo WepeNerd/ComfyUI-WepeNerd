@@ -2,26 +2,15 @@
 
 ## Unreleased
 
-- Add H3 Ripple (from the Experimental review build): **Ripple Clip**, **Ripple Apply** and
-  **Ripple Output** propagate an edit made to one frame (or a few) of a shot through the whole shot with
-  MiniMax H3 FL2VA and the `H3_Ripple_v1` LoRA, plus an example workflow. Compared with the
-  review build:
-  - Edits can be dropped onto a marker card or pasted with Ctrl+V, not only uploaded; a
-    pasted image no longer becomes a stray Load Image node. Each card warns at once when
-    an edit's aspect ratio differs from the frame.
-  - Re-running after changing only the edits reuses the decoded window, the encoded prompt
-    (the 32B text encoder is not run again) and the encoded source clip.
-  - Ripple Output saves the shot (with source audio) and the comparison as MP4 through
-    Save Video and previews them; the example workflow drops four Create/Save Video nodes.
-  - `resolution` is a plain short edge (352, 384, 544, 768) and `length` a plain frame count
-    with its duration; workflows saved with the older longer labels still load and run.
-  - Changing the length keeps unedited markers at the same place in the window and edited
-    ones on their frame. Apply warns when an edit was made for a frame the marker has
-    since left, and when no edit differs from the source.
-  - Thumbnails are cached by the browser until the video changes and keep showing while a
-    marker or the window is dragged; the marker panel redraws at most once per frame.
-  - The video list is shared with Load Video (cached), instead of walking the whole input
-    folder each time the node list refreshes.
+- Add H3 Ripple video editing with **Ripple Clip**, **Ripple From Frames**,
+  **Ripple Apply**, and **Ripple Output**, using MiniMax H3 FL2VA and `H3_Ripple_v1`.
+  - Select a time window, megapixel size and crop, with aspect-preserving resizing
+    and automatic padding to H3's dimension grid.
+  - Choose a valid duration from a dropdown showing frames and seconds.
+  - Upload edited anchor frames or connect images from an upstream editor to
+    the named anchor inputs. Marker identities stay stable when reordered.
+  - Save the selected shot with source audio and a source/result comparison.
+  - Include upload-based and local Qwen Image 2.1 editor workflows.
 
 - Sigma Curve: presets now match ComfyUI's schedulers step for step. Poly-exponential
   was mirrored (it held high sigmas, then dropped sharply). Flow shift 3/6 and Align
@@ -38,7 +27,7 @@
 - Add Frame Slicer: keeps frames `start` up to `stop` of an IMAGE batch, with the same
   inputs as RES4LYF's Frames Slice. A range that would keep no frames gives a clear
   error instead of an empty batch.
-- Add Save Video: a streamlined take on VHS Video Combine. Saves MP4 (H.264, H.265
+- Add Save Video: saves MP4 (H.264, H.265
   10-bit, AV1 10-bit), WebM VP9, MOV ProRes, MKV FFV1 16-bit lossless, GIF or WebP
   with PyAV in one pass: audio is muxed into the same file and trimmed to the video,
   no first-frame PNG or `-audio` duplicate is written, and the workflow is embedded

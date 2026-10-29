@@ -1,8 +1,7 @@
-"""H3 Ripple: timeline, canvas and edited-frame checks shared by the nodes (no ComfyUI imports).
+"""Shared Ripple timeline, canvas geometry and edited-frame validation.
 
-Everything lives on the 24 fps grid MiniMax H3 generates. ``window_start`` is a grid frame of
-the source, ``length`` a valid H3 frame count (17k + 5) and ``edit_frame`` the frame inside the
-window that the user edits (``j``, zero-based). js/ripple_timeline.mjs mirrors these rules.
+Positions use the 24 fps grid; window lengths follow H3's 17k + 5 frame rule.
+js/ripple_timeline.mjs mirrors these rules.
 """
 
 from __future__ import annotations
@@ -14,54 +13,77 @@ import numpy as np
 
 FPS = 24
 CANVAS_MULTIPLE = 32
-# Window lengths offered (17k + 5 frames at 24 fps).
-LENGTHS = (22, 39, 56, 73, 90, 107, 124, 141, 158, 175, 192)
-DEFAULT_LENGTH = 107
-# Short edge of the generation; the long edge follows the video's aspect.
-RESOLUTIONS = {"352": 352, "384": 384, "544": 544, "768": 768}
-DEFAULT_RESOLUTION = "384"
+DEFAULT_DURATION = 107 / FPS
+DEFAULT_MEGAPIXELS = 0.25
 DEFAULT_PROMPT = (
     "Edit propagation: each edited frame shows exactly how that moment of the video should look after the edit. "
     "Apply the same changes to every frame of the clip, before, between and after the edited frames, so the edit "
     "stays consistent through the whole video. Keep the guide video's motion, timing, camera movement, composition "
     "and all unedited content unchanged."
 )
-# Edited frames per window: one by default; add more when an edit needs another anchor.
-MAX_MARKERS = 4
+RESIZE_METHODS = ("lanczos", "bicubic", "bilinear", "nearest-exact", "area")
 
 
 def default_markers() -> list[dict]:
     """One marker on the window's first frame."""
-    return [{"frame": 0, "edited": "", "edited_at": None}]
+    return [{"id": 1, "frame": 0, "edited": "", "edited_at": None}]
 
 
 DEFAULT_MARKERS_JSON = json.dumps(default_markers(), separators=(",", ":"))
 
 
-def short_edge(resolution) -> int:
-    """Short edge from a resolution value; older labels such as "384 (...)" still read as 384."""
-    if resolution in RESOLUTIONS:
-        return RESOLUTIONS[resolution]
-    try:
-        return int(str(resolution).split()[0])
-    except (ValueError, IndexError):
-        return RESOLUTIONS[DEFAULT_RESOLUTION]
+def duration_frames(duration: float) -> int:
+    if not math.isfinite(float(duration)) or duration <= 0:
+        raise ValueError("Duration must be a finite positive number of seconds.")
+    return max(5, 5 + 17 * math.floor((duration * FPS - 5) / 17 + 0.5))
 
 
-def length_label(frames: int) -> str:
-    return f"{frames} frames ({frames / FPS:.2f} s)"
+def normalized_crop(crop="") -> list[float]:
+    if crop is None or crop == "":
+        return [0.0, 0.0, 1.0, 1.0]
+    values = json.loads(crop) if isinstance(crop, str) else crop
+    if not isinstance(values, (list, tuple)) or len(values) != 4:
+        raise ValueError("Crop must be [x, y, width, height] in normalized source coordinates.")
+    x, y, w, h = map(float, values)
+    if not all(math.isfinite(v) for v in (x, y, w, h)) or w <= 0 or h <= 0:
+        raise ValueError("Crop must have finite coordinates and positive width and height.")
+    x, y = max(0.0, min(1.0, x)), max(0.0, min(1.0, y))
+    w, h = min(w, 1.0 - x), min(h, 1.0 - y)
+    if w <= 0 or h <= 0:
+        raise ValueError("Crop must overlap the source image.")
+    return [round(v, 8) for v in (x, y, w, h)]
 
 
-LENGTH_LABELS = [length_label(frames) for frames in LENGTHS]
-DEFAULT_LENGTH_LABEL = length_label(DEFAULT_LENGTH)
-
-
-def parse_length(label) -> int:
-    """Frame count from a length label (or a plain number); must be 17k + 5."""
-    frames = int(str(label).split()[0])
-    if frames < 5 or frames % 17 != 5:
-        raise ValueError(f"H3 windows need 17k + 5 frames, got {frames}")
-    return frames
+def geometry(width: int, height: int, megapixels=DEFAULT_MEGAPIXELS, crop="", allow_upscale=False,
+             resize_method="lanczos", output_width=0, output_height=0) -> dict:
+    """Source crop, visible content and aligned model canvas."""
+    if width < 1 or height < 1:
+        raise ValueError("Video size must be positive.")
+    if resize_method not in RESIZE_METHODS:
+        raise ValueError(f"Unknown resize method: {resize_method}")
+    mp = float(megapixels)
+    if not math.isfinite(mp) or mp <= 0 or output_width < 0 or output_height < 0:
+        raise ValueError("Megapixels must be positive; fit width and height must be zero or positive.")
+    if bool(output_width) != bool(output_height):
+        raise ValueError("Set both fit width and fit height, or leave both at zero.")
+    selected_crop = normalized_crop(crop)
+    x, y, w, h = selected_crop
+    left = min(width - 1, math.floor(x * width + 0.5))
+    top = min(height - 1, math.floor(y * height + 0.5))
+    right = min(width, max(left + 1, math.floor((x + w) * width + 0.5)))
+    bottom = min(height, max(top + 1, math.floor((y + h) * height + 0.5)))
+    sw, sh = right - left, bottom - top
+    scale = math.sqrt(mp * 1_000_000 / (sw * sh)) if mp else 1.0
+    if output_width and output_height:
+        scale = min(output_width / sw, output_height / sh)
+    if not allow_upscale:
+        scale = min(1.0, scale)
+    cw, ch = max(2, 2 * math.floor(sw * scale / 2)), max(2, 2 * math.floor(sh * scale / 2))
+    canvas_w, canvas_h = math.ceil(cw / 32) * 32, math.ceil(ch / 32) * 32
+    return {"crop": selected_crop, "source_rect": [left, top, sw, sh],
+            "width": canvas_w, "height": canvas_h,
+            "content_rect": [(canvas_w - cw) // 2, (canvas_h - ch) // 2, cw, ch],
+            "resize_method": resize_method}
 
 
 def grid_frame_count(duration: float, fps: float = FPS) -> int:
@@ -69,8 +91,8 @@ def grid_frame_count(duration: float, fps: float = FPS) -> int:
     return max(0, math.floor(duration * fps + 0.5))
 
 
-def fit_window(available: int, window_start: int, length: int, edit_frame: int) -> tuple[int, int, int, list[str]]:
-    """Clamp a requested window into the source. Returns (start, length, edit_frame, notes).
+def fit_window(available: int, window_start: int, length: int) -> tuple[int, int, list[str]]:
+    """Clamp a requested window into the source. Returns (start, length, notes).
 
     The window keeps its length when it fits and slides back from the end of the video; a source
     shorter than the window gets the longest valid length that fits. Never pads or loops frames.
@@ -85,21 +107,18 @@ def fit_window(available: int, window_start: int, length: int, edit_frame: int) 
     start = min(max(0, int(window_start)), available - length)
     if start != window_start:
         notes.append(f"Window moved to start at frame {start} so it fits the video.")
-    edit = min(max(0, int(edit_frame)), length - 1)
-    if edit != edit_frame:
-        notes.append(f"Edit frame moved to {edit} (inside the window).")
-    return start, length, edit, notes
+    return start, length, notes
 
 
-def parse_markers(markers, edit_frame: int, length: int) -> tuple[list[dict], list[str]]:
+def parse_markers(markers, length: int) -> tuple[list[dict], list[str]]:
     """Edited-frame markers as a list of {"frame": j, "edited": input-folder path or "", "edited_at": k}, by frame.
 
     ``edited_at`` is the absolute source frame the attached edit was made for (None when unknown);
     see stale_markers.
 
-    ``markers`` is the node's JSON widget (a list of objects or plain frame numbers). An empty value means
-    a single marker at ``edit_frame`` (workflows saved before multiple markers existed). Frames are clamped
-    into the window; duplicates keep the first marker; at most MAX_MARKERS are used.
+    ``markers`` is the node's JSON widget (a list of objects). An empty value means
+    a single marker at the first frame. Frames are clamped
+    into the window; colliding markers move to the nearest free frame without losing their identity.
     """
     notes = []
     items = []
@@ -111,43 +130,46 @@ def parse_markers(markers, edit_frame: int, length: int) -> tuple[list[dict], li
     elif isinstance(markers, list):
         items = markers
     if not items:
-        items = [{"frame": int(edit_frame)}]
-    seen, out = set(), []
+        items = default_markers()
+    seen, ids, out = set(), set(), []
     for item in items:
         frame = int(item["frame"] if isinstance(item, dict) else item)
         clamped = min(max(0, frame), length - 1)
         if clamped != frame:
             notes.append(f"Edited frame {frame + 1} moved to {clamped + 1} (inside the window).")
         if clamped in seen:
-            notes.append(f"Two markers on frame {clamped + 1}; keeping one.")
-            continue
+            replacement = next((k for d in range(1, length) for k in (clamped + d, clamped - d)
+                                if 0 <= k < length and k not in seen), clamped)
+            if replacement != clamped:
+                notes.append(f"Edited frame {clamped + 1} moved to {replacement + 1} to keep both markers.")
+                clamped = replacement
         seen.add(clamped)
+        identity = item.get("id") if isinstance(item, dict) else None
+        if not isinstance(identity, int) or isinstance(identity, bool) or identity < 1 or identity in ids:
+            identity = next(i for i in range(1, len(items) + 2) if i not in ids)
+        ids.add(identity)
         edited = str(item.get("edited") or "") if isinstance(item, dict) else ""
         edited_at = item.get("edited_at") if isinstance(item, dict) else None
-        out.append({"frame": clamped, "edited": edited,
-                    "edited_at": int(edited_at) if isinstance(edited_at, (int, float)) and edited else None})
+        entry = {"id": identity, "frame": clamped, "edited": edited,
+                 "edited_at": int(edited_at) if isinstance(edited_at, (int, float)) and edited else None}
+        if isinstance(item, dict) and item.get("edited_crop") is not None:
+            entry["edited_crop"] = normalized_crop(item["edited_crop"])
+        if isinstance(item, dict) and isinstance(item.get("edited_source"), dict):
+            entry["edited_source"] = {key: str(item["edited_source"].get(key, "")) for key in ("video", "version")}
+        out.append(entry)
     out.sort(key=lambda marker: marker["frame"])
-    if len(out) > MAX_MARKERS:
-        notes.append(f"Only the first {MAX_MARKERS} edited frames are used.")
-        out = out[:MAX_MARKERS]
     return out, notes
 
 
-def stale_markers(markers: list[dict], window_start: int) -> list[int]:
+def stale_markers(markers: list[dict], window_start: int, crop=None, source=None, version=None) -> list[int]:
     """Markers whose attached edit was made for a different source frame (the marker or window moved since)."""
-    return [m["frame"] for m in markers
-            if m.get("edited") and m.get("edited_at") is not None and m["edited_at"] != window_start + m["frame"]]
-
-
-def canvas_size(width: int, height: int, edge: int) -> tuple[int, int]:
-    """Target canvas: the source aspect with the given short edge, each side a multiple of 32."""
-    if width <= 0 or height <= 0:
-        raise ValueError("Video size must be positive")
-    if width >= height:
-        long_edge = edge * width / height
-        return max(CANVAS_MULTIPLE, round(long_edge / CANVAS_MULTIPLE) * CANVAS_MULTIPLE), edge
-    long_edge = edge * height / width
-    return edge, max(CANVAS_MULTIPLE, round(long_edge / CANVAS_MULTIPLE) * CANVAS_MULTIPLE)
+    return [m["frame"] for m in markers if m.get("edited") and
+            ((m.get("edited_at") is not None and m["edited_at"] != window_start + m["frame"])
+             or (crop is not None and m.get("edited_crop") is not None
+                 and normalized_crop(m["edited_crop"]) != normalized_crop(crop))
+             or (source is not None and m.get("edited_source") is not None
+                 and (m["edited_source"].get("video") != source
+                      or (version is not None and m["edited_source"].get("version") != version))))]
 
 
 def timecode(seconds: float) -> str:
@@ -161,11 +183,6 @@ def describe(start: int, length: int, edit) -> str:
     label = "frame" if len(frames) == 1 else "frames"
     return (f"{timecode((start + frames[0]) / FPS)} · {label} {where} of {length} · window {timecode(start / FPS)}–"
             f"{timecode((start + length) / FPS)} ({length / FPS:.2f} s)")
-
-
-# ---------------------------------------------------------------------------
-# Edited-frame checks
-# ---------------------------------------------------------------------------
 
 
 def _structure(images: np.ndarray, size: int = 48) -> np.ndarray:
@@ -216,9 +233,8 @@ def match_edited_frame(window: np.ndarray, edited: np.ndarray, edit_frame: int) 
 
 
 def aspect_note(edited_size: tuple[int, int], canvas: tuple[int, int]) -> str | None:
-    """A warning when the editor changed the image's aspect ratio (it will be centre-cropped back)."""
+    """Report substantial editor reshaping; small latent-grid rounding is expected."""
     (ew, eh), (cw, ch) = edited_size, canvas
-    if abs((ew / eh) / (cw / ch) - 1) > 0.01:
-        return (f"Edited image is {ew}x{eh} but the window is {cw}x{ch}; it was centre-cropped to fit, "
-                "which can shift the edit. Keep the editor's output at the frame's aspect ratio.")
+    if abs((ew / eh) / (cw / ch) - 1) > 0.05:
+        return (f"Edited image is {ew}x{eh}; the complete image was resized to the frame's {cw}x{ch} content area.")
     return None

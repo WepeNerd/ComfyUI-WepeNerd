@@ -30,7 +30,7 @@ batch with a separate node.
 | Input | Description |
 |---|---|
 | `video` | Upload/select a video. GIF files can also be placed in the input folder and selected. |
-| `frame_load_cap` | Maximum frames to load; default 121 so a long video can't fill your RAM by accident. 0 loads all. |
+| `frame_load_cap` | Maximum frames to load; default 121. 0 loads all. |
 | `frame_rate` | 0 keeps source frames. A positive FPS samples the video timeline, dropping or repeating frames without interpolation. |
 | `skip_first_frames` | Frames skipped (after rate conversion) before the clip starts. A large skip jumps to the keyframe before it instead of decoding every skipped frame, so clips from late in long videos load fast. |
 | `select_every_nth` | Keep every nth frame after skipping; 1 keeps all. |
@@ -105,60 +105,6 @@ the frame rate setting (or the video's own). API prompts written for earlier ver
 still run, since every input except `video` has a default; `start_time`, `duration`,
 `custom_width` and `custom_height` there are ignored.
 
----|---|
-| `video` | Upload/select a video. GIF files can also be placed in the input folder and selected. |
-| `frame_rate` | 0 keeps source frames. A positive FPS samples the video timeline, dropping or repeating frames without interpolation. |
-| `frame_load_cap` | Maximum selected frames; 0 means all. Decoding stops at the cap. |
-| `skip_first_frames` | Frames skipped **after** rate conversion. |
-| `select_every_nth` | Keep every nth frame after skipping; 1 keeps all. |
-| `format` | VHS model dimension and frame-count constraints; default `None`. Does not change the FPS setting. |
-| `custom_width` / `custom_height` | 0/0 preserves source size. Set one to preserve aspect ratio; set both to resize to that shape. Dimensions then round to the preset's nearest multiple. |
-| `load_audio` | Enabled by default. Decode the selected clip's audio; disable for image-only workflows. |
-
-The source-video preview autoplays muted and loops when a video is selected or
-the workflow is reopened. Use its controls to pause or unmute. It previews the
-original file, not the sampled output batch; browser codec support determines
-which files can play inline.
-
-Processing order: frame rate → skip → every nth → cap → format trimming.
-For example, rate 10, skip 2, nth 2, and cap 3 selects resampled frames 2, 4,
-and 6, with an output rate of 5 FPS. Positive rates use FFmpeg's standard FPS
-filter with nearest timestamp rounding; source-frame choices can differ from
-VHS's OpenCV loader.
-
-| Format | Dimension multiple | Frame count |
-|---|---|---|
-| None | 1 | Any |
-| AnimateDiff | 8 | Any |
-| Mochi | 16 | 6n+1 |
-| LTXV | 32 | 8n+1 |
-| Hunyuan | 16 | 4n+1 |
-| Cosmos | 16 | 8n+1 |
-| Wan | 8 | 4n+1 |
-| H3 | 32 | 17n+5 |
-
-Presets trim trailing frames to the largest valid count without exceeding the
-cap. Too few frames or a skip beyond the video ends with an explanatory error.
-Preset constraints match the installed VHS presets; choose `None` for other
-model variants or to preserve the exact selected batch.
-
-Outputs: `images` is one RGB float32 IMAGE batch `[frames, height, width, 3]` in
-0–1; `frame_count` is its actual length; `frame_rate` is the requested (or source)
-FPS divided by every nth. Native variable-rate videos retain all selected source
-frames and report an average FPS; set a positive FPS for uniform timing.
-The `audio` output uses ComfyUI's standard AUDIO format and preserves source
-sample rate and channels. It starts at the selected video interval and spans
-`frame_count / frame_rate` seconds after preset trimming. Audio remains at its
-original speed; every-nth selection reduces the output FPS accordingly. Missing
-audio at the interval's edges is padded with silence. A file without an audio
-track, or a disabled `load_audio`, returns `None`. Connect `audio` to a video
-combine/save node's audio input or to Preview Audio when a track is available.
-
-Long or high-resolution batches require RAM for the
-full output (about 24 MiB per 1080p frame); use a cap or smaller dimensions.
-
----
-
 ## Save Video
 
 Saves an IMAGE batch as one file in a single pass with PyAV (the same library Load
@@ -202,19 +148,6 @@ cancelled, the partial file is deleted.
 
 The output `filepath` is the saved file's full path.
 
-### Compared with VHS Video Combine
-
-| VHS Video Combine | Save Video |
-|---|---|
-| Writes a first-frame PNG beside every video to carry the workflow. | Embeds the workflow in the video; one file. |
-| With audio, encodes the video, then remuxes a second `-audio` copy and keeps both. | Audio and video interleave in one pass; one file. |
-| Needs an FFmpeg executable (and gifski for its best GIFs); frames are piped to subprocesses, and a failed metadata write re-runs the encode. | In-process PyAV; GIF palettes are built in one pass. |
-| `vae` and `meta_batch` inputs decode and batch inside the saver. | Use VAE Decode (Tiled) upstream; the saver only saves. |
-| `loop_count` duplicates frames into videos with FFmpeg's loop filter. | Removed: players loop; GIF and WebP loop forever. |
-| Per-format widgets (`pix_fmt`, `save_metadata`, `trim_to_audio`…) from JSON templates. | One `crf`; bit depth and pixel format follow the format. |
-| Transparency only from 4-channel IMAGE tensors. | Also from a MASK, matching Load Video's `mask` output. |
-| Outputs `VHS_FILENAMES`, needing Select Filename. | Outputs the path as a STRING. |
-
 ## Duration Selector
 
 Pick a clip length your video model accepts, as frames or seconds, under
@@ -244,9 +177,7 @@ Switching presets keeps about the same length, so 121 frames (5.04 s) on LTX-2 b
 | Cosmos 1.0 | 8n+1 | 9–121 | 24 |
 | Mochi 1 | 6n+1 | 7–163 | 30 |
 
-MiniMax H3's trained window is roughly 107–362 frames (4–15 s); shorter counts on
-the grid decode but are out of distribution. The LTX-2 and Wan upper limits are
-practical caps, not model maximums.
+Preset upper limits are configurable practical caps, not model maximums.
 
 | Output | Description |
 |---|---|
@@ -277,79 +208,144 @@ The frames are copied exactly, keeping their size, channels, dtype and device.
 
 ## H3 Ripple
 
-Edit a frame of a shot in any image editor and MiniMax H3 re-renders the shot with the edit
-carried through every frame before and after it. When one frame isn't enough, add more edited
-frames (up to four); the edit is then carried before, between and after them. Three nodes under
-**WepeNerd/H3 Ripple**, used together in the [example workflow](../example_workflows/H3_Ripple.json)
-(also listed under **Templates › ComfyUI-WepeNerd**).
+Edit one or two frames of a shot and use MiniMax H3 to carry the change through the selected
+window. Choose a workflow under **WepeNerd/H3 Ripple**:
 
-**Requirements:** the MiniMax H3 **FL2VA** model (for example `minimax_h3_fl2va_pruned_int8_convrot`),
-the `minimax` text encoder, the H3 video VAE, and the **H3_Ripple_v1** LoRA at
-strength 1. Sample with a BasicGuider (CFG 1); the example uses `res_multistep`, `simple`, 20 steps.
-The Ostris training adapter is training-only; never load it here.
+| Workflow | Use |
+|---|---|
+| [H3 Ripple](../example_workflows/H3_Ripple.json) | Upload a clip, choose its window and crop, then download/edit/upload anchor images. H3 models and sampling are grouped below the main controls. |
+| [H3 Ripple — Local Editor](../example_workflows/H3_Ripple_Local_Editor.json) | Route anchor 1 and anchor 2 through separate local Qwen Image 2.1 editors. Review both images before enabling the H3 video output. |
+
+**H3 requirements:** `minimax_h3_fl2va_pruned_int8_convrot.safetensors`,
+`qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` with CLIP type `minimax`,
+`minimax_h3_video_vae_fp16.safetensors`, and `H3/H3_Ripple_v1.safetensors` at strength 1.
+Equivalent compatible H3 FL2VA weights can be selected in the loaders. The templates use
+BasicGuider (CFG 1), `res_multistep`, `simple`, and 20 steps. The optional
+`H3/MiniMax-H3-FL2VA-Acc-8Step_comfy.safetensors` loader starts bypassed; enable it and change
+the step count to 8 when using that accelerator.
+
+The local-editor template additionally needs these Qwen files:
+
+| Loader | File |
+|---|---|
+| Load Diffusion Model | `qwen_image_2.1_int8_convrot.safetensors` in `models/diffusion_models` or `models/unet` |
+| Load CLIP, type `qwen_image` | `qwen3vl_8b_int8_convrot.safetensors` in `models/text_encoders` |
+| Load VAE | `qwen_image_2.1_vae_bf16.safetensors` in `models/vae` |
+
+It uses native **Text Encode Qwen Image 2.1**, **KSampler**, **VAE Decode**, and **Preview Image**
+nodes. Models run locally and must be installed before loading the workflow.
 
 ### Ripple Clip
 
-Upload or pick a video. Everything happens on H3's 24 fps grid; other frame rates are resampled
-once, exactly as FFmpeg's `fps=24` filter would, and the preview, thumbnails and outputs all show
-the same frames.
+Upload or pick a video, then choose the shot on the timeline. H3 works at 24 fps; other frame rates
+are resampled once, and the preview, anchor images and output use that same frame grid.
 
-- **Blue window:** the frames H3 generates. Drag it, or click the track to centre it there.
-  `length` picks how many frames (17k + 5); a video shorter than the window gets the longest
-  length that fits. Nothing is padded or looped.
-- **Numbered markers:** the frames you edit. New nodes start with one, on the window's first
-  frame. Drag a marker, or select the node and use ← / → (Shift moves the
-  window, Shift+Alt by one second; Tab switches markers). **+ Add frame** adds up to four.
-- **Cards:** one per marker, with the exact source frame at the generation size. **Download
-  frame**, edit it, then **Upload edit**, drop the image onto the card, or select the node and
-  press **Ctrl+V** to attach a copied image to the selected marker. Edits are stored in
-  `input/ripple_edits`.
-- Warnings appear on the card when an edit's aspect ratio differs from the frame (it will be
-  centre-cropped) and when the marker or window has moved since the edit was attached.
-- `resolution` is the short edge; the long edge follows the video's aspect, rounded to 32.
-- **Play shot** loops the window in the preview without moving anything.
+- **Blue window:** drag it to the interval to generate, drag an end to trim it, or choose a
+  **Duration** entry such as **107 frames · 4.46 s**. The list includes every valid `17k + 5`
+  count up to 3592 frames (149.67 s), the last valid count within the native H3 node's 3600-frame
+  input limit. Short videos use the longest valid count that fits; frames are never looped or
+  added to lengthen the video. Timeline trimming keeps the list and actual duration in sync.
+- **Megapixels:** choose a preset or enter a custom value. The default is 0.25 MP. The content
+  keeps its aspect ratio and is downscaled by default. `allow_upscale` permits enlarging it.
+  The readout shows the actual output dimensions and frame count after rounding.
+- **Crop:** choose the retained region in the crop preview before editing. An empty crop uses
+  the full source. The same crop applies to every frame and anchor. Changing only megapixels
+  keeps that framing and resizes existing uploaded edits; it does not require recreating them.
+- **Advanced dimensions:** `output_width` and `output_height` are fit bounds, not a request to
+  stretch the image. Set both to override megapixels, or leave both at zero. `resize_method`
+  defaults to Lanczos.
+- **Numbered markers:** move an anchor to a useful frame. **+ Add frame** adds another. The separate `anchor_1` and `anchor_2` outputs follow marker IDs 1 and 2 even when the
+  markers cross on the timeline; the `frames_to_edit` batch remains in time order.
+- **Cards:** download the exact frame, edit it, then upload, drop or paste the result onto its
+  card. Edits are stored in `input/ripple_edits`. Review warnings after changing the source video,
+  marker, time window or crop: an image made for a different moment or framing may need to be redone.
+- **Keyboard:** left/right arrows move the selected marker; Shift moves the window, Shift+Alt
+  by one second; Tab switches markers. **Play shot** loops the selected interval.
+
+Spatial processing keeps content separate from H3's canvas. Ripple crops the source, resizes it
+uniformly, rounds the content dimensions to even pixels, then adds centered edge padding to
+reach H3's multiple-of-32 canvas. Downloaded anchors and final video omit that internal padding.
+Ripple Output removes exactly the same padding from the generated shot and comparison. Changing
+megapixels therefore changes size without changing the requested crop.
 
 | Output | Description |
 |---|---|
-| `frames_to_edit` | The marked frames, in time order, for an in-graph editor. |
-| `ripple` | Window frames, markers, size, audio slice and source for Apply and Output. |
-| `source_window` | All frames of the window at the generation size. |
+| `frames_to_edit` | Marked content frames in time order, for a batch-aware editor. |
+| `ripple` | The selected source window, marker identities, geometry and audio for Apply and Output. |
+| `source_window` | The prepared source window used by the H3 guide. |
 | `audio` | The window's source audio, or None. |
+| `anchor_1` | The single content frame belonging to marker ID 1. |
+| `anchor_2` | The single content frame belonging to marker ID 2, when present. |
+
+### Ripple From Frames
+
+Use **H3 Ripple From Frames** when the video already comes from another loader or an upstream
+IMAGE batch. Connect `images`, its actual `frame_rate`, and optional `audio`. It resamples that
+batch to 24 fps, selects the requested window and applies the same crop, megapixel sizing and
+padding as Ripple Clip. `window_start` and marker `frame` values use the 24 fps grid; marker
+frames are relative to the selected window. For example,
+`[{"id":1,"frame":0},{"id":2,"frame":53}]` creates two named anchors.
+
+The six outputs match Ripple Clip. Connect `ripple` to the same Apply and Output nodes, and
+send `anchor_1` / `anchor_2` through your editors to Apply's named inputs. The audio is sliced
+to the selected interval; if your loader already trimmed a clip, its audio must start at that
+batch's first frame. This node uses ordinary graph inputs rather than Ripple Clip's upload
+timeline and edit cards.
 
 ### Ripple Apply
 
-Builds the conditioning the LoRA expects: the fixed text prompt (leave it; the edit comes from
-the images), the whole original window as a guide at frame 0, and each edited frame encoded on its
-own as a guide at its frame, as chained **Add Guide for MiniMax H3** nodes would. Edited images come
-from the cards, or from `edited_images` (one per marker, in time order), which take precedence.
+Builds the generic propagation prompt, the original window as a guide at frame 0, and a separate
+edited-frame guide at each marker's position. Leave the propagation prompt in place; describe
+the visual change in the image editor instead.
 
-Apply reports, per marker, whether the image matches its source frame (✓), and warns when an image
-looks made from another frame, was made before its marker moved, or is unchanged from the source
-(that moment is then kept as it is). A marker without an edit stops the
-run before anything is encoded.
+Edited-image priority is resolved per marker:
 
-Re-running after changing only the edits reuses the encoded prompt, so the 32B text encoder does not
-run again, and the encoded source window; only the edited frames are encoded. Ripple Clip likewise
-reuses the decoded window when only the markers or edits change.
+1. `edited_anchor_1` or `edited_anchor_2` for that marker's stable ID.
+2. The corresponding image in `edited_images`, matched to markers in time order.
+3. The uploaded image attached to its card.
+
+A missing edited anchor stops the run before model encoding. Apply restores the full edited
+image to the intended content size and adds the H3 padding; it does not center-crop away part
+of an editor's result. This also handles Qwen's small dimension changes when it rounds its
+input to multiples of 32. Keep the full composition intact when using another image editor.
+
+Apply checks whether an edit resembles the selected source moment and warns about stale,
+unchanged or potentially mismatched edits.
+Changing only edits reuses the encoded prompt and source window; changing only markers reuses
+Ripple Clip's decoded video where possible.
+
+### Edit and review with local Qwen
+
+The local-editor template has two separate encoder → sampler → decoder branches, fed by
+`anchor_1` and `anchor_2`. Their outputs connect directly to Apply's named anchor inputs, so
+reordering the markers cannot swap the edits. Both branches share one edit instruction and
+local model loaders. The initial instruction is a jacket recolor example; replace it with the
+change needed for your shot.
+
+**Ripple Output starts muted.** Run once to generate the two **Preview Image** outputs without
+running H3. Check the requested change, framing, subject identity and consistency between the
+anchors. When both are ready, select Ripple Output and press **Ctrl+M**, or set **Mode → Always**,
+then run again. Fixed Qwen seeds allow unchanged edits to be reused from ComfyUI's cache.
+
+Qwen uses `resolution = 0` and its encoder's own returned latent, with 25 steps, CFG 1, Euler and
+the simple schedule. It still rounds reference dimensions to multiples of 32; Apply resizes the
+whole result back to the Ripple content rectangle. To use only one anchor, remove marker 2,
+disconnect `edited_anchor_2`, and mute its editor/preview branch. To use another local image
+model, replace a complete editing branch while keeping the same IMAGE input and output.
 
 ### Ripple Output
 
-Saves the generated shot as MP4 (H.264) with the window's source audio, and a silent source | result
-comparison with a yellow bar on each edited frame, through **Save Video**. `save` picks either, both
-or nothing; `filename_prefix` defaults to `ripple/edit` (the comparison adds `_compare`). It also
-outputs `images`, `audio`, `frame_rate` (24) and `comparison` for other savers or post-processing.
-The output covers the selected shot only; it does not splice the shot back into the full video.
+Saves the generated shot as H.264 MP4 with the selected source audio and a silent source | result
+comparison. A yellow bar marks edited frames. `save` picks either, both or neither;
+`filename_prefix` defaults to `ripple/edit` and the comparison adds `_compare`.
+Outputs are `images`, `audio`, `frame_rate` (24), and `comparison` for other savers.
+The result covers the selected window; it is not spliced back into the full source video.
 
-### Tips
-
-- Start with one edited frame where the subject is clearly visible.
-- Add a second edited frame when the edit needs another anchor: a side of the subject the first frame
-  doesn't show, or an edit that should hold at a later moment. Give it exactly the same change.
-- Keep the edited images at the frame's size, or at least its aspect ratio.
-- Keep the seed fixed when comparing different edits of the same shot.
+Start with a clearly visible subject, use a second anchor when another view needs the same
+change, and keep the seed fixed when comparing results. Source motion and appearance preservation
+are learned behavior, not an exact pixel lock.
 
 ## Drag Resolution
-
 
 An interactive visual resolution picker. Drag a box to set your output dimensions. Values snap to the chosen divisor grid in real time.
 
@@ -381,7 +377,6 @@ An interactive visual resolution picker. Drag a box to set your output dimension
 
 ## Resolution Suggest
 
-
 Takes a source width/height and proportionally resizes to a target, snapped to a divisor grid. Useful for preparing dimensions for models that need specific multiples.
 
 | Input | Description |
@@ -404,12 +399,9 @@ Takes a source width/height and proportionally resizes to a target, snapped to a
 
 ---
 
-
-
 ## Resize Image Megapixels
 
-
-**Category:** `WepeNerd/Image` Â· **Input/Output:** `IMAGE`.
+**Category:** `WepeNerd/Image` · **Input/Output:** `IMAGE`.
 
 Resize an image or batch to a target megapixel count (1 MP = 1,000,000 pixels).
 The node calculates the size at the original aspect ratio, then rounds each
@@ -418,7 +410,6 @@ multiple). Actual megapixels may be slightly above or below the target, with
 small aspect-ratio changes from rounding; the whole image is retained without
 cropping. Supports upscaling and downscaling with ComfyUI's **lanczos** (default),
 **bicubic**, **bilinear**, **nearest-exact**, and **area** interpolation.
-
 
 ## Qwen Edit Mask
 
@@ -557,14 +548,9 @@ segmentation: strong unwanted changes can also be selected, while subtle parts
 of an object can be missed. Inspect the mask and use `limit_mask` or Paint Mask
 when you need a precise allowed edit region. No model download is required.
 
-Validated with synthetic translations, affine transforms, additions/removals,
-batches, mask limits and exact preservation checks. Real Qwen/Krea2 output quality
-still depends on the source/edit pair and the chosen threshold.
-
 ## Slider
 
-
-A standardized semantic `-1 â†’ 0 â†’ +1` control that outputs a normal ComfyUI
+A `-1 → 0 → +1` control that outputs a normal ComfyUI
 `FLOAT`. Connect its `strength` output to `strength_model`, `strength_clip`, or
 any other compatible FLOAT input. It maps LOW, CENTER, and HIGH independently,
 so positive-only, asymmetric, and reversed ranges work without changing the
@@ -578,15 +564,13 @@ everyday slider interface.
 - Double-click the track, or use **Reset Slider to Center** in the node context
   menu, to reset the normalized position to `0`.
 
-For a positive-only `0 â†’ 3` range, use LOW `0`, CENTER `1.5`, and HIGH `3`,
+For a positive-only `0 → 3` range, use LOW `0`, CENTER `1.5`, and HIGH `3`,
 so both halves of the control remain useful. The Slider only produces a FLOAT;
 it does not select or load LoRAs.
 
-
 ## Speedpaint
 
-
-**Category:** `WepeNerd/Image` Â· **Output:** `IMAGE`.
+**Category:** `WepeNerd/Image` · **Output:** `IMAGE`.
 
 Sketch on a solid background with **New**, or **Load** / drop a PNG, JPEG or WebP
 and paint over it. Connect an upstream `IMAGE` to the optional `image` input and
@@ -595,7 +579,7 @@ batch. Each click queues the current upstream settings, without running downstre
 nodes. With no image connected, **Load** opens the file picker. Normal **Queue**
 outputs the saved painting; press **Load** again to replace it from upstream.
 Width and height accept INT connections and local values
-(64â€“4096 pixels, step 1). Imports use an oriented, colour-managed, centered Lanczos
+(64–4096 pixels, step 1). Imports use an oriented, colour-managed, centered Lanczos
 crop at that exact size. Shift-drag before painting to reposition the crop.
 
 The compact toolbar has round/square brushes, an eraser, colour with a hex picker, a live
@@ -621,10 +605,6 @@ moving machines. Queueing and standard Save/Export commands wait for pending
 preparation and asset writes; synchronous copies also retain a recovery PNG if a
 write is pending. Undo history is limited to 30 operations / 128 MiB and does not
 persist across reloads. Background colour changes apply to the next New/import.
-
-Validated with ComfyUI 0.34.0 / frontend 1.51.10, browser integration checks and a
-real VAE Encode/Decode execution. Physical tablet pressure has not been tested.
-
 
 ## Liquify Image
 
@@ -665,10 +645,6 @@ Imports are limited to 64 MiB. Large embedded originals can produce large workfl
 files. History supports 2000 strokes / 100,000 points; longer edits can be split
 across connected Liquify nodes. File imports support EXIF orientation and embedded
 colour profiles. Queued rendering checks for cancellation between image strips.
-
-Open the [example workflow](../examples/liquify.json) for a portable image and a
-saved editable warp connected to Preview Image.
-
 
 ## Paint Mask
 
@@ -716,8 +692,7 @@ and lasts for the current editing session.
 
 ## Load LoRA Masked
 
-
-**Category:** `WepeNerd/Loaders` Â· **Model:** native floating-point or INT8 ConvRot Krea2.
+**Category:** `WepeNerd/Loaders` · **Model:** native floating-point or INT8 ConvRot Krea2.
 
 Use ComfyUI's **Load Diffusion Model** loader, including for native INT8 ConvRot
 checkpoints. The base layer retains its quantized forward calculation; the masked
@@ -762,19 +737,18 @@ limited to 16384 pixels per side, 64 Mi pixels total (including batch), and 96 M
 of serialized text. Saved PNG dimensions must match their header; alpha stores
 coverage and never the magenta preview.
 
-Downsampling now uses area/adaptive averaging so narrow painted regions survive
+Downsampling uses area/adaptive averaging so narrow painted regions survive
 projection to image tokens. Integer reductions are exact block averages; noninteger
 reductions are adaptive averages. Upsampling is bilinear; mixed-axis resizing
 reduces shrinking axes first. Geometry follows the actual latent size and model
 patch size. For patch padding, coverage first maps to the unpadded latent, wraps
 the right/bottom border circularly like native Krea2, then averages into tokens.
-This intentionally fixes the previous bilinear aliasing at mask edges.
 
 Drop/open an image to use its exact oriented dimensions, or paint on the default
-1024 Ã— 1024 blank canvas. Masks map proportionally to the sampled image grid; use a
+1024 × 1024 blank canvas. Masks map proportionally to the sampled image grid; use a
 reference with the intended aspect ratio for aligned regions. The editor follows the
 compact icon-toolbar layout, with explicit image loading and a removable reference.
-Right-click the node for **Open reference imageâ€¦** while IMAGE is connected.
+Right-click the node for **Open reference image…** while IMAGE is connected.
 
 **Load input** uses an available upstream preview. Otherwise it offers **Run upstream**,
 which queues only the connected IMAGE ancestors and a private snapshot sink. It uses
@@ -789,14 +763,9 @@ step; Escape, cancellation or lost capture restores its starting mask, even afte
 a save during the gesture. Reference images use ComfyUI input-asset descriptors; copy the
 `input/wepenerd_masked_lora` folder with workflows when moving machines. LoRA/model
 files must also be installed on the destination machine. Duplicates have independent editors.
-Hover updates only the cursor layer. Painting updates the preview once per animation
-frame. Changed gestures encode PNGs asynchronously; an immediate save/queue falls
-back to synchronous encoding when necessary. Coverage tracking avoids a full-mask
-alpha scan after each stroke, and pointerdown reuses the existing document without
-parsing its PNG text. See [editor and runtime review fixes](masked-lora-review-fixes.md)
-for tested behavior, timings and remaining large-brush limits.
-Failed undo restores report an error and retain both the current painting and
-the history entry; successful restores remove the entry.
+Large masks or brushes can slow painting and saves. Failed undo restores report
+an error and retain both the current painting and the history entry; successful
+restores remove the entry.
 
 Chained masked nodes add independent spatial contributions and preserve ordinary
 global LoRA weight patches. Supported adapters are linear LoRA and full/factored LoKr,
@@ -836,7 +805,7 @@ Mixed batches compute adapter deltas only for the active rows.
 This changes interaction with CFG; it does not always improve quality, change
 text encoder weights, or schedule other nodes' global LoRAs. Chained masked nodes
 can use independent ranges and modes. Old workflow/API fields default to full
-range/Both. See [Phase 4 sampling validation](masked-lora-phase4.md).
+range/Both.
 
 Chained regions share one layer dispatcher and one sampling layout. Adapter tensors
 and projected masks are reused within each sampling run, with a default 256 MiB
@@ -854,15 +823,9 @@ Invalid cache/headroom environment values warn and use their defaults.
 
 Unchanged adapter files reuse a bounded CPU cache, including after mask-only edits.
 Ordinary file replacement is detected when queuing. Restart ComfyUI to force a
-fresh read if a writer preserved all file metadata. See
-[Phase 2 runtime and measurements](masked-lora-phase2.md) for cache settings,
-in-process invalidation and measured RTX 5090 tradeoffs.
-
-The compatibility boundary remains native floating-point and native INT8 ConvRot
-Krea2. See [Phase 1 validation](masked-lora-phase1.md) for actual numerical and
-integration results, the Phase 2 report for runtime regressions, and Phase 4 for
-fixed-seed generation evidence and its visual-quality limits. FP8/NVFP4, Qwen and
-Flux remain unsupported.
+fresh read if a writer preserved all file metadata. See the
+[masked LoRA reference](masked-lora.md) for cache settings, in-process invalidation
+and validation commands.
 
 ## Sigma Curve
 
