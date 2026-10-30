@@ -6,3 +6,4 @@
 *.json text eol=lf
 *.yml text eol=lf
 *.toml text eol=lf
+docs/workflows/*.json -text

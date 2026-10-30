@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#121c1a">
+  <title>H3 Ripple — Frame edits, in motion</title>
+  <meta name="description" content="Edit selected frames and carry the change through a video with H3 Ripple for ComfyUI. Watch comparisons, download workflows, and get the Ripple LoRA.">
+  <meta property="og:title" content="H3 Ripple — Frame edits, in motion">
+  <meta property="og:description" content="An image edit becomes a video edit. Explore H3 Ripple for ComfyUI, with four examples and two downloadable workflows.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://wepenerd.github.io/ComfyUI-WepeNerd/">
+  <meta property="og:image" content="https://wepenerd.github.io/ComfyUI-WepeNerd/assets/savanna-rhino-reveal.webp">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="site-config.js" defer></script>
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header wrap">
+    <a class="wordmark" href="#" aria-label="H3 Ripple home"><svg viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="20" cy="20" rx="17" ry="8"/><ellipse cx="20" cy="20" rx="11" ry="5"/><circle cx="20" cy="20" r="2"/></svg><span>H3 Ripple<span class="byline">by WepeNerd</span></span></a>
+    <nav aria-label="Main navigation"><a href="#examples">Examples</a><a href="#workflows">Workflows</a><a href="#setup">Setup</a><a class="repo-link" href="https://github.com/WepeNerd/ComfyUI-WepeNerd">GitHub <span aria-hidden="true">↗</span></a></nav>
+  </header>
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div><p class="eyebrow"><span class="status-dot"></span> MiniMax H3 · ComfyUI</p><h1 id="hero-title">Edit a frame.<br><span>Change the shot.</span></h1></div>
+      <div class="hero-copy"><p>Make your change in an image editor. Ripple carries it through the video, using your edited frames as anchors.</p><p class="muted">Swap a subject, rework a scene, or change a product. Keep your own editing tools—or run the image edits locally with Qwen.</p><div class="actions"><a class="button primary" href="#workflows">Get the workflows <span aria-hidden="true">↓</span></a><a class="text-link" href="https://huggingface.co/WepeNerd/H3_Ripple">Ripple LoRA <span aria-hidden="true">↗</span></a></div></div>
+    </section>
+
+    <section class="examples wrap" id="examples" aria-labelledby="examples-title">
+      <div class="section-heading"><div><p class="eyebrow">See the change</p><h2 id="examples-title">Same shot. New possibilities.</h2></div><p class="legend"><span>Original <b>left</b></span><span class="result-label">Ripple <b>right</b></span></p></div>
+      <div class="showcase">
+        <div class="player-stage"><video id="example-video" controls playsinline preload="metadata" poster="assets/stage-replacement.webp" aria-label="Original and Ripple comparison: green-screen performer on a concert stage"><source src="assets/stage-replacement.mp4" type="video/mp4">Your browser cannot play this video. <a href="assets/stage-replacement.mp4">Download it instead.</a></video></div>
+        <div class="player-caption"><div aria-live="polite"><p class="eyebrow" id="example-category">01 / Environment</p><h3 id="example-title">From green screen to main stage</h3><p id="example-description">A green-screen performance becomes a concert-stage scene.</p></div><a class="video-link" id="example-link" href="assets/stage-replacement.mp4">Open video <span aria-hidden="true">↗</span></a></div>
+      </div>
+      <div class="example-picker" aria-label="Choose a comparison video">
+        <button class="example-choice active" type="button" aria-pressed="true" data-example="0"><img src="assets/stage-replacement.webp" alt="" width="128" height="72"><span><small>01 / Environment</small><strong>Set the stage</strong></span><span class="choice-arrow" aria-hidden="true">↗</span></button>
+        <button class="example-choice" type="button" aria-pressed="false" data-example="1"><img src="assets/savanna-rhino-reveal.webp" alt="" width="128" height="72" loading="lazy"><span><small>02 / Scene + subject</small><strong>A different world</strong></span><span class="choice-arrow" aria-hidden="true">↗</span></button>
+        <button class="example-choice" type="button" aria-pressed="false" data-example="2"><img src="assets/bottle-replacement.webp" alt="" width="128" height="72" loading="lazy"><span><small>03 / Product</small><strong>Change the bottle</strong></span><span class="choice-arrow" aria-hidden="true">↗</span></button>
+        <button class="example-choice" type="button" aria-pressed="false" data-example="3"><img src="assets/character-swap.webp" alt="" width="128" height="72" loading="lazy"><span><small>04 / Character</small><strong>Recast the adventurer</strong></span><span class="choice-arrow" aria-hidden="true">↗</span></button>
+      </div>
+      <noscript><p>More examples: <a href="assets/savanna-rhino.mp4">Scene and subject</a> · <a href="assets/bottle-replacement.mp4">Product</a> · <a href="assets/character-swap.mp4">Character</a>.</p></noscript>
+      <p class="media-note">Actual output comparisons. Clips are silent; use the player controls to watch or view fullscreen.</p>
+    </section>
+
+    <section class="process wrap" aria-labelledby="process-title">
+      <div class="section-heading"><div><p class="eyebrow">The idea is simple</p><h2 id="process-title">An image edit becomes a video edit.</h2></div></div>
+      <ol class="steps"><li><span class="step-number">01</span><h3>Choose your moment</h3><p>Load a video, choose the shot, and place anchor markers on the frames you want to edit. Adjust the crop and output size in the same view.</p></li><li><span class="step-number">02</span><h3>Make the change</h3><p>Edit the marked frames in your preferred image editor, or connect a local model. Use a second anchor when another view needs the same change.</p></li><li><span class="step-number">03</span><h3>Let it ripple</h3><p>H3 uses the source video and edited anchors to propagate the change through the shot. Save the result and a side-by-side comparison.</p></li></ol>
+    </section>
+
+    <section class="demo wrap" id="demo" aria-labelledby="demo-title">
+      <div class="demo-placeholder" id="demo-placeholder"><div class="demo-symbol" aria-hidden="true"><svg viewBox="0 0 96 64"><rect x="8" y="12" width="80" height="40" rx="3"/><path d="M8 24h80M8 40h80M30 12v40M66 12v40"/><path class="demo-play" d="m42 26 12 6-12 6z"/></svg></div><div><p class="eyebrow">Full walkthrough · Coming soon</p><h2 id="demo-title">See the whole process.</h2><p>The main demo video is being finished. Explore the examples above and try the workflows below in the meantime.</p></div><span class="demo-badge">In production</span></div>
+      <div id="demo-embed" hidden></div>
+    </section>
+
+    <section class="downloads" id="workflows" aria-labelledby="workflows-title"><div class="wrap">
+      <div class="section-heading"><div><p class="eyebrow">Make it yours</p><h2 id="workflows-title">Two ways to work.</h2></div><p>Download a workflow JSON.<br>Drag it onto your ComfyUI canvas.</p></div>
+      <div class="workflow-grid">
+        <article class="workflow"><div class="workflow-top"><span class="workflow-tag">Bring your own editor</span><span class="workflow-index">01</span></div><h3>Ripple Simple</h3><p>Edit anchor frames with the tools you already know. Download a frame, make your change, and upload the edited image to its matching marker.</p><ul><li>Your choice of image editor</li><li>Five local model files</li><li>Model links included in the workflow</li></ul><a class="button dark" href="workflows/H3_Ripple_Simple.json" download>Download Simple <span aria-hidden="true">↓</span></a><p class="file-detail">H3_Ripple_Simple.json</p></article>
+        <article class="workflow"><div class="workflow-top"><span class="workflow-tag">Edit inside ComfyUI</span><span class="workflow-index">02</span></div><h3>Ripple Local Editor</h3><p>Use two Qwen Image 2.1 branches to edit your anchors locally, then pass those images directly into Ripple. Adapt the graph to your own workflow.</p><ul><li>Two connected image-editing branches</li><li>Eight local model files</li><li>No API required for the local path</li></ul><a class="button dark" href="workflows/H3_Ripple_Local_Editor.json" download>Download Local Editor <span aria-hidden="true">↓</span></a><p class="file-detail">H3_Ripple_Local_Editor.json</p></article>
+      </div>
+      <p class="download-note">Bring your own source video. Both downloads include a Models &amp; setup card and are configured for the H3 Turbo 4-step LoRA.</p>
+    </div></section>
+
+    <section class="setup wrap" id="setup" aria-labelledby="setup-title">
+      <div class="setup-intro"><p class="eyebrow">Start here</p><h2 id="setup-title">A little setup.<br>Then your shot.</h2><p>You’ll need a current ComfyUI installation and hardware capable of running MiniMax H3. The local editor also runs Qwen Image 2.1.</p><a class="text-link" href="https://github.com/WepeNerd/ComfyUI-WepeNerd#installation">Full installation guide <span aria-hidden="true">↗</span></a></div>
+      <div class="setup-list"><article><span>01</span><div><h3>Install the custom nodes</h3><p>Clone <a href="https://github.com/WepeNerd/ComfyUI-WepeNerd">ComfyUI-WepeNerd</a> into <code>ComfyUI/custom_nodes</code>, install its requirements with ComfyUI’s Python environment, then restart ComfyUI.</p></div></article><article><span>02</span><div><h3>Get the models</h3><p>Open the workflow’s <strong>Models &amp; setup</strong> card for exact downloads and folders. Both workflows need H3 FL2VA, its text encoder and video VAE, the Turbo LoRA, and the <a href="https://huggingface.co/WepeNerd/H3_Ripple">Ripple LoRA</a>.</p><p>Local Editor adds Qwen Image 2.1, its text encoder and VAE. Both image-editing branches share those three files.</p></div></article><article><span>03</span><div><h3>Load your video and edit</h3><p>Select your own video in Ripple Clip. Choose the shot, output size and anchors. In Simple, upload your edited frame; in Local Editor, replace both example edit instructions with your intended change.</p><p>Ripple Output is enabled in these downloads, so queuing also renders the H3 video. Start with a small output size and keep your anchor edits consistent.</p></div></article></div>
+    </section>
+
+    <section class="resources wrap" aria-label="Project resources"><a href="https://huggingface.co/WepeNerd/H3_Ripple"><span>Model weights</span><strong>H3 Ripple on Hugging Face <b aria-hidden="true">↗</b></strong></a><a href="https://github.com/WepeNerd/ComfyUI-WepeNerd"><span>Code &amp; documentation</span><strong>ComfyUI-WepeNerd on GitHub <b aria-hidden="true">↗</b></strong></a></section>
+  </main>
+  <footer class="wrap"><p><strong>H3 Ripple</strong> by WepeNerd</p><p>Built with MiniMax H3 &amp; ComfyUI · <a href="https://comfy.org/open-source-higgsfield">Open Source Higgsfield</a></p><p><a href="https://github.com/WepeNerd/ComfyUI-WepeNerd/blob/main/LICENSE">MIT-licensed code</a><span class="footer-note">Model licenses apply separately.</span></p></footer>
+</body>
+</html>

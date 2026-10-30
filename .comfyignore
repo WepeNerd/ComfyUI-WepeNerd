@@ -1,3 +1,5 @@
 .git/
 .github/
 tests/
+docs/assets/
+docs/workflows/

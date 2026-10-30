@@ -1,0 +1,1146 @@
+{
+  "id": "f116ea99-4671-4a51-9475-e4643ca0605d",
+  "revision": 0,
+  "last_node_id": 59,
+  "last_link_id": 105,
+  "nodes": [
+    {
+      "id": 2,
+      "type": "UNETLoader",
+      "pos": [
+        2400.8561534970618,
+        -0.007036345010141054
+      ],
+      "size": [
+        460,
+        82
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "title": "H3 FL2VA",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.43.0",
+        "Node name for S&R": "UNETLoader",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "default"
+      ],
+      "widgets_values_named": {
+        "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    {
+      "id": 3,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        2400.8561534970618,
+        119.99296365498998
+      ],
+      "size": [
+        460,
+        82
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "title": "Optional 8-step accelerator (bypassed)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.43.0",
+        "Node name for S&R": "LoraLoaderModelOnly",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "H3\\minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors",
+        1
+      ],
+      "widgets_values_named": {
+        "lora_name": "H3\\minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors",
+        "strength_model": 1
+      }
+    },
+    {
+      "id": 4,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        2400.8561534970618,
+        239.99296365499012
+      ],
+      "size": [
+        460,
+        82
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            57
+          ]
+        }
+      ],
+      "title": "H3 Ripple LoRA",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.43.0",
+        "Node name for S&R": "LoraLoaderModelOnly",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "H3\\minimax_H3_Ripple-v1.safetensors",
+        1
+      ],
+      "widgets_values_named": {
+        "lora_name": "H3\\minimax_H3_Ripple-v1.safetensors",
+        "strength_model": 1
+      }
+    },
+    {
+      "id": 5,
+      "type": "CLIPLoader",
+      "pos": [
+        2404.9614184429074,
+        478.0193308480502
+      ],
+      "size": [
+        460,
+        106
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.43.0",
+        "Node name for S&R": "CLIPLoader",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax",
+        "default"
+      ],
+      "widgets_values_named": {
+        "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "type": "minimax",
+        "device": "default"
+      }
+    },
+    {
+      "id": 6,
+      "type": "VAELoader",
+      "pos": [
+        2404.9614184429074,
+        638.019330848049
+      ],
+      "size": [
+        460,
+        58
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            5,
+            15
+          ]
+        }
+      ],
+      "title": "H3 video VAE",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.43.0",
+        "Node name for S&R": "VAELoader",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "minimax_h3_video_vae_fp16.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+      }
+    },
+    {
+      "id": 7,
+      "type": "WN_RippleApply",
+      "pos": [
+        2889.7980662543755,
+        6.01403039314817
+      ],
+      "size": [
+        415.071352602527,
+        230
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 4
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 5
+        },
+        {
+          "name": "ripple",
+          "type": "WN_RIPPLE",
+          "link": 104
+        },
+        {
+          "name": "edited_images",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "edited_anchor_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "edited_anchor_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            8
+          ]
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            13
+          ]
+        }
+      ],
+      "title": "Ripple Apply — edited anchor 1 + edited anchor 2",
+      "properties": {
+        "aux_id": "WepeNerd/ComfyUI-WepeNerd",
+        "ver": "b3927ed1a1332756ee0667d6545a4d0303ebb278",
+        "Node name for S&R": "WN_RippleApply",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Edit propagation: each edited frame shows exactly how that moment of the video should look after the edit. Apply the same changes to every frame of the clip, before, between and after the edited frames, so the edit stays consistent through the whole video. Keep the guide video's motion, timing, camera movement, composition and all unedited content unchanged."
+      ],
+      "widgets_values_named": {
+        "prompt": "Edit propagation: each edited frame shows exactly how that moment of the video should look after the edit. Apply the same changes to every frame of the clip, before, between and after the edited frames, so the edit stays consistent through the whole video. Keep the guide video's motion, timing, camera movement, composition and all unedited content unchanged."
+      }
+    },
+    {
+      "id": 8,
+      "type": "RandomNoise",
+      "pos": [
+        3342.3822561298603,
+        4.508755095419972
+      ],
+      "size": [
+        300,
+        82
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "title": "Seed (fixed: compare edits)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.43.0",
+        "Node name for S&R": "RandomNoise",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        123456,
+        "fixed"
+      ],
+      "widgets_values_named": {
+        "noise_seed": 123456,
+        "control_after_generate": "fixed"
+      }
+    },
+    {
+      "id": 9,
+      "type": "KSamplerSelect",
+      "pos": [
+        3342.3822561298603,
+        124.50875509542014
+      ],
+      "size": [
+        300,
+        58
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.43.0",
+        "Node name for S&R": "KSamplerSelect",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "euler"
+      ],
+      "widgets_values_named": {
+        "sampler_name": "euler"
+      }
+    },
+    {
+      "id": 10,
+      "type": "BasicScheduler",
+      "pos": [
+        3342.3822561298603,
+        224.5087550954203
+      ],
+      "size": [
+        300,
+        106
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 55
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "title": "Steps (8 with the accelerator)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.43.0",
+        "Node name for S&R": "BasicScheduler",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "simple",
+        4,
+        1
+      ],
+      "widgets_values_named": {
+        "scheduler": "simple",
+        "steps": 4,
+        "denoise": 1
+      }
+    },
+    {
+      "id": 11,
+      "type": "BasicGuider",
+      "pos": [
+        3342.3822561298603,
+        374.50875509542016
+      ],
+      "size": [
+        300,
+        46
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 56
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "title": "Guider (CFG 1, no negative)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.43.0",
+        "Node name for S&R": "BasicGuider",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        3342.3822561298603,
+        464.5087550954194
+      ],
+      "size": [
+        300,
+        106
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 9
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 10
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 11
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 12
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            14
+          ]
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.43.0",
+        "Node name for S&R": "SamplerCustomAdvanced",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "VAEDecode",
+      "pos": [
+        3342.3822561298603,
+        614.5087550954183
+      ],
+      "size": [
+        300,
+        46
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 14
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 15
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            100
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.43.0",
+        "Node name for S&R": "VAEDecode",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "MarkdownNote",
+      "pos": [
+        2400,
+        800
+      ],
+      "size": [
+        900,
+        1060
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "H3 Ripple · Models & setup",
+      "properties": {
+        "Node name for S&R": "MarkdownNote",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# H3 Ripple — Model downloads\n\nInstall [ComfyUI-WepeNerd](https://github.com/WepeNerd/ComfyUI-WepeNerd) and use a current ComfyUI version. Download the five files below; folders are relative to your ComfyUI directory.\n\n### H3 FL2VA diffusion model · [Download](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors)\n\n`minimax_h3_fl2va_pruned_int8_convrot.safetensors`\n\nSave in `models/diffusion_models/`.\n\n### H3 Turbo 4-step LoRA · [Download](https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors)\n\n`minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors`\n\nSave in `models/loras/H3/`.\n\n### H3 Ripple LoRA · [Model page](https://huggingface.co/WepeNerd/H3_Ripple)\n\n`minimax_H3_Ripple-v1.safetensors`\n\nSave in `models/loras/H3/`.\n\n### H3 text encoder · [Download](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors)\n\n`qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`\n\nSave in `models/text_encoders/`.\n\n### H3 video VAE · [Download](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors)\n\n`minimax_h3_video_vae_fp16.safetensors`\n\nSave in `models/vae/`.\n\n### Workflow settings\n\nThe Turbo LoRA is enabled: **4 steps · Euler · simple · CFG 1**. Both LoRA strengths are **1.0**. The CLIP loader type is **minimax**. Refresh the model lists or restart ComfyUI after copying the files, then select them in the loaders.\n\nThis workflow expects the Ripple filename shown above. If the published download has a different name, select that file in the Ripple LoRA loader.\n\n### Using the workflow\n\nChoose your video and shot in Ripple Clip. Download the marked frames, edit them externally, and upload each edit to its matching card. Ripple Output is enabled and saves the shot and comparison. Source audio is reused; an audio VAE and a separate image-editing model are not needed for this workflow."
+      ],
+      "widgets_values_named": {
+        "text": "# H3 Ripple — Model downloads\n\nInstall [ComfyUI-WepeNerd](https://github.com/WepeNerd/ComfyUI-WepeNerd) and use a current ComfyUI version. Download the five files below; folders are relative to your ComfyUI directory.\n\n### H3 FL2VA diffusion model · [Download](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors)\n\n`minimax_h3_fl2va_pruned_int8_convrot.safetensors`\n\nSave in `models/diffusion_models/`.\n\n### H3 Turbo 4-step LoRA · [Download](https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors)\n\n`minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors`\n\nSave in `models/loras/H3/`.\n\n### H3 Ripple LoRA · [Model page](https://huggingface.co/WepeNerd/H3_Ripple)\n\n`minimax_H3_Ripple-v1.safetensors`\n\nSave in `models/loras/H3/`.\n\n### H3 text encoder · [Download](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors)\n\n`qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`\n\nSave in `models/text_encoders/`.\n\n### H3 video VAE · [Download](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors)\n\n`minimax_h3_video_vae_fp16.safetensors`\n\nSave in `models/vae/`.\n\n### Workflow settings\n\nThe Turbo LoRA is enabled: **4 steps · Euler · simple · CFG 1**. Both LoRA strengths are **1.0**. The CLIP loader type is **minimax**. Refresh the model lists or restart ComfyUI after copying the files, then select them in the loaders.\n\nThis workflow expects the Ripple filename shown above. If the published download has a different name, select that file in the Ripple LoRA loader.\n\n### Using the workflow\n\nChoose your video and shot in Ripple Clip. Download the marked frames, edit them externally, and upload each edit to its matching card. Ripple Output is enabled and saves the shot and comparison. Source audio is reused; an audio VAE and a separate image-editing model are not needed for this workflow."
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 40,
+      "type": "ModelAttentionBackend",
+      "pos": [
+        2591.3221908068563,
+        372.01827858664865
+      ],
+      "size": [
+        270,
+        58
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 57
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            55,
+            56
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.43.0",
+        "Node name for S&R": "ModelAttentionBackend",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        "comfy kitchen attention"
+      ],
+      "widgets_values_named": {
+        "attention": "comfy kitchen attention"
+      }
+    },
+    {
+      "id": 57,
+      "type": "WN_RippleOutput",
+      "pos": [
+        3678.610976476993,
+        7.6886134171382094
+      ],
+      "size": [
+        421.4051742802694,
+        421.31564196774195
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 100
+        },
+        {
+          "name": "ripple",
+          "type": "WN_RIPPLE",
+          "link": 105
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": null
+        },
+        {
+          "name": "frame_rate",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "name": "comparison",
+          "type": "IMAGE",
+          "links": [
+            103
+          ]
+        }
+      ],
+      "title": "Ripple Output — MUTED: enable after reviewing edits",
+      "properties": {
+        "aux_id": "WepeNerd/ComfyUI-WepeNerd",
+        "ver": "510007abd37f800cb51027bce7c3fce0cb7d23bb",
+        "Node name for S&R": "WN_RippleOutput",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "8.0"
+        }
+      },
+      "widgets_values": [
+        "shot + comparison",
+        "ripple/edit",
+        false
+      ],
+      "widgets_values_named": {
+        "save": "shot + comparison",
+        "filename_prefix": "ripple/edit",
+        "show_anchor_markers": false
+      }
+    },
+    {
+      "id": 58,
+      "type": "WN_SaveVideo",
+      "pos": [
+        4109.535510642603,
+        8.950573235994064
+      ],
+      "size": [
+        937.5100468407618,
+        667.6220215934741
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 103
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "filepath",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "WepeNerd/ComfyUI-WepeNerd",
+        "ver": "510007abd37f800cb51027bce7c3fce0cb7d23bb",
+        "Node name for S&R": "WN_SaveVideo",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "8.0"
+        }
+      },
+      "widgets_values": [
+        24,
+        "video",
+        "MP4 · H.264",
+        15,
+        false,
+        false
+      ],
+      "widgets_values_named": {
+        "fps": 24,
+        "filename_prefix": "video",
+        "format": "MP4 · H.264",
+        "crf": 15,
+        "pingpong": false,
+        "save_output": false
+      }
+    },
+    {
+      "id": 59,
+      "type": "WN_RippleClip",
+      "pos": [
+        1687.5175166994816,
+        15.055098382694204
+      ],
+      "size": [
+        640,
+        1179
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "frames_to_edit",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "ripple",
+          "type": "WN_RIPPLE",
+          "links": [
+            104,
+            105
+          ]
+        },
+        {
+          "name": "source_window",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": null
+        },
+        {
+          "name": "anchor_1",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "anchor_2",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "title": "Load video into Ripple. Choose and edit anchor frame",
+      "properties": {
+        "aux_id": "WepeNerd/ComfyUI-WepeNerd",
+        "ver": "510007abd37f800cb51027bce7c3fce0cb7d23bb",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "Node name for S&R": "WN_RippleClip",
+        "wn_ripple": {
+          "window_start": 0,
+          "markers": "[{\"id\":1,\"frame\":13,\"edited\":\"\",\"edited_at\":null}]",
+          "duration": 3.75,
+          "megapixels": 1,
+          "crop": "",
+          "allow_upscale": false,
+          "resize_method": "lanczos",
+          "output_width": 0,
+          "output_height": 0
+        }
+      },
+      "widgets_values": [
+        "edit_00001_.mp4",
+        3.75,
+        1,
+        0,
+        "[{\"id\":1,\"frame\":13,\"edited\":\"\",\"edited_at\":null}]",
+        "",
+        false,
+        "lanczos",
+        0,
+        0,
+        "image",
+        ""
+      ],
+      "widgets_values_named": {
+        "video": "edit_00001_.mp4",
+        "duration": 3.75,
+        "megapixels": 1,
+        "window_start": 0,
+        "markers": "[{\"id\":1,\"frame\":13,\"edited\":\"\",\"edited_at\":null}]",
+        "crop": "",
+        "allow_upscale": false,
+        "resize_method": "lanczos",
+        "output_width": 0,
+        "output_height": 0,
+        "upload": "image",
+        "ripple_markers": ""
+      }
+    }
+  ],
+  "links": [
+    [
+      2,
+      2,
+      0,
+      3,
+      0,
+      "MODEL"
+    ],
+    [
+      3,
+      3,
+      0,
+      4,
+      0,
+      "MODEL"
+    ],
+    [
+      4,
+      5,
+      0,
+      7,
+      0,
+      "CLIP"
+    ],
+    [
+      5,
+      6,
+      0,
+      7,
+      1,
+      "VAE"
+    ],
+    [
+      8,
+      7,
+      0,
+      11,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      9,
+      8,
+      0,
+      12,
+      0,
+      "NOISE"
+    ],
+    [
+      10,
+      11,
+      0,
+      12,
+      1,
+      "GUIDER"
+    ],
+    [
+      11,
+      9,
+      0,
+      12,
+      2,
+      "SAMPLER"
+    ],
+    [
+      12,
+      10,
+      0,
+      12,
+      3,
+      "SIGMAS"
+    ],
+    [
+      13,
+      7,
+      1,
+      12,
+      4,
+      "LATENT"
+    ],
+    [
+      14,
+      12,
+      0,
+      13,
+      0,
+      "LATENT"
+    ],
+    [
+      15,
+      6,
+      0,
+      13,
+      1,
+      "VAE"
+    ],
+    [
+      55,
+      40,
+      0,
+      10,
+      0,
+      "MODEL"
+    ],
+    [
+      56,
+      40,
+      0,
+      11,
+      0,
+      "MODEL"
+    ],
+    [
+      57,
+      4,
+      0,
+      40,
+      0,
+      "MODEL"
+    ],
+    [
+      100,
+      13,
+      0,
+      57,
+      0,
+      "IMAGE"
+    ],
+    [
+      103,
+      57,
+      3,
+      58,
+      0,
+      "IMAGE"
+    ],
+    [
+      104,
+      59,
+      1,
+      7,
+      2,
+      "WN_RIPPLE"
+    ],
+    [
+      105,
+      59,
+      1,
+      57,
+      1,
+      "WN_RIPPLE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Choose the shot and its anchor frame(s)",
+      "bounding": [
+        1675.9994690669312,
+        -59.59554661562784,
+        685.2684463156713,
+        1309.8895369941383
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "2. Render video — enable Ripple Output after reviewing edits",
+      "bounding": [
+        2380.8561534970618,
+        -60.00703634501023,
+        2674.3665968169394,
+        785.9277616921534
+      ],
+      "color": "#b06634",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.732050000000025,
+      "offset": [
+        -1385.8469313676762,
+        630.9960402741959
+      ]
+    },
+    "ue_links": [],
+    "links_added_by_ue": [],
+    "frontendVersion": "1.57.6",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "extensions": {
+    "seed_widgets": {
+      "8": 0
+    }
+  },
+  "version": 0.4,
+  "seed_widgets": {
+    "8": 0
+  }
+}

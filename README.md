@@ -26,6 +26,8 @@ H3 Ripple video edit propagation for ComfyUI.
 | **Load LoRA Masked · Beta** | Apply spatial LoRA/LoKr regions to native Krea2 models |
 | **H3 Ripple** | Edit a frame of a shot in any image editor; MiniMax H3 carries the edit through the whole shot |
 
+**H3 Ripple:** [Watch the examples and download the workflows](https://wepenerd.github.io/ComfyUI-WepeNerd/).
+
 ## Installation
 
 From your ComfyUI `custom_nodes` directory:
