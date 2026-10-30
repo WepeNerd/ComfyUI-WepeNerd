@@ -440,13 +440,21 @@ class OutputTest(RippleTest):
         self.assertEqual(tuple(images.shape),(22,108,192,3))
         self.assertEqual(tuple(compare.shape),(22,108,384,3))
 
-    def test_comparison_marks_every_edited_frame(self):
+    def test_comparison_preserves_pixels_by_default_and_marks_anchors_only_when_enabled(self):
         context = {"window": torch.zeros(22, 32, 48, 3), "length": 22, "edit_frame": 4, "audio": None, "fps": 24,
                    "markers": [{"frame": 4}, {"frame": 15}], "geometry": {"width":48,"height":32,"content_rect":[0,0,48,32]}}
-        images, audio, fps, comparison = ripple.WN_RippleOutput().output(torch.ones(22, 32, 48, 3), context,
-                                                                         save="nothing")
+        generated = torch.ones(22, 32, 48, 3)
+        images, audio, fps, comparison = ripple.WN_RippleOutput().output(generated, context, save="nothing")
         self.assertEqual((tuple(comparison.shape), fps), ((22, 32, 96, 3), 24.0))
-        self.assertEqual([float(comparison[f, 0, 0, 0]) for f in (4, 15, 10)], [1.0, 1.0, 0.0])
+        self.assertTrue(torch.equal(comparison[:, :, :48], context["window"]))
+        self.assertTrue(torch.equal(comparison[:, :, 48:], generated))
+        marked = ripple.WN_RippleOutput().output(generated, context, save="nothing", show_anchor_markers=True)[3]
+        for frame in (4, 15):
+            torch.testing.assert_close(marked[frame, :6], torch.tensor([1., .8, 0.]).expand(6, 96, 3))
+        self.assertTrue(torch.equal(marked[:, 6:], comparison[:, 6:]))
+        self.assertTrue(torch.equal(marked[10], comparison[10]))
+        self.assertEqual(float(context["window"].sum()), 0.)
+        self.assertTrue(torch.equal(images, generated))
 
     def test_saves_the_shot_with_audio_and_a_silent_comparison(self):
         rate, samples = 8000, round(22 / 24 * 8000)
@@ -465,6 +473,8 @@ class OutputTest(RippleTest):
             self.assertEqual((stream.width, stream.height, stream.frames or 22), (48, 32, 22))
         with av.open(str(compare)) as container:
             self.assertEqual((len(container.streams.audio), container.streams.video[0].width), (0, 96))
+            anchor = next(frame for index, frame in enumerate(container.decode(video=0)) if index == 4)
+            self.assertLess(int(anchor.to_ndarray(format="rgb24")[:6, :24].max()), 8)
         self.assertIs(out["result"][1], audio)
 
 

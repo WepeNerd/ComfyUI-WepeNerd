@@ -588,8 +588,8 @@ class WN_RippleApply:
 SAVE_CHOICES = ("shot + comparison", "shot", "comparison", "nothing")
 
 
-def comparison_frames(images: torch.Tensor, ripple: dict) -> torch.Tensor:
-    """Source | result side by side with a yellow bar on every edited frame."""
+def comparison_frames(images: torch.Tensor, ripple: dict, show_anchor_markers: bool = False) -> torch.Tensor:
+    """Source | result side by side, optionally marking edited anchor frames."""
     count = min(len(images), ripple["length"])
     images = trim_content(images[:count], ripple["geometry"])
     source = trim_content(ripple["window"][:count], ripple["geometry"]).to(images.device, images.dtype)
@@ -598,9 +598,10 @@ def comparison_frames(images: torch.Tensor, ripple: dict) -> torch.Tensor:
         source = comfy.utils.common_upscale(source.movedim(-1, 1), int(images.shape[2]), int(images.shape[1]),
                                             "lanczos", "disabled").movedim(1, -1)
     comparison = torch.cat((source, images[..., :3]), dim=2).clone()
-    for marker in ripple["markers"]:
-        if marker["frame"] < count:
-            comparison[marker["frame"], :6] = torch.tensor([1.0, 0.8, 0.0], dtype=comparison.dtype)
+    if show_anchor_markers:
+        for marker in ripple["markers"]:
+            if marker["frame"] < count:
+                comparison[marker["frame"], :6] = torch.tensor([1.0, 0.8, 0.0], dtype=comparison.dtype)
     return comparison
 
 
@@ -614,7 +615,7 @@ class WN_RippleOutput:
         "The generated window.",
         "The source audio of the window.",
         "24.0",
-        "Source | result side by side, with the edited frames marked.",
+        "Source | result side by side. Anchor markers are off by default.",
     )
     DESCRIPTION = (
         "Saves the generated shot as MP4 with the source audio, and a source | result comparison, using Save "
@@ -633,14 +634,16 @@ class WN_RippleOutput:
                          "tooltip": "What to save as MP4 (H.264) in the output folder. The comparison is silent."}),
                 "filename_prefix": ("STRING", {"default": "ripple/edit",
                                     "tooltip": "Name prefix; may include subfolders. The comparison adds _compare."}),
+                "show_anchor_markers": ("BOOLEAN", {"default": False, "advanced": True,
+                                        "tooltip": "Draw a yellow bar on edited anchor frames in the comparison output and saved comparison video."}),
             },
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
         }
 
     def output(self, images, ripple, save=SAVE_CHOICES[0], filename_prefix="ripple/edit", prompt=None,
-               extra_pnginfo=None):
+               extra_pnginfo=None, show_anchor_markers=False):
         count = min(len(images), ripple["length"])
-        comparison = comparison_frames(images[:count], ripple)
+        comparison = comparison_frames(images[:count], ripple, show_anchor_markers=show_anchor_markers)
         images = trim_content(images[:count], ripple["geometry"])
         fps, audio, previews = float(ripple["fps"]), ripple.get("audio"), []
         if save in ("shot + comparison", "shot", "comparison"):

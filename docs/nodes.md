@@ -336,9 +336,11 @@ model, replace a complete editing branch while keeping the same IMAGE input and 
 ### Ripple Output
 
 Saves the generated shot as H.264 MP4 with the selected source audio and a silent source | result
-comparison. A yellow bar marks edited frames. `save` picks either, both or neither;
+comparison. `save` picks either, both or neither;
 `filename_prefix` defaults to `ripple/edit` and the comparison adds `_compare`.
 Outputs are `images`, `audio`, `frame_rate` (24), and `comparison` for other savers.
+Comparisons have no anchor overlay by default. Enable `show_anchor_markers` under **Advanced**
+to draw a yellow bar on edited anchor frames in both the comparison output and saved comparison video.
 The result covers the selected window; it is not spliced back into the full source video.
 
 Start with a clearly visible subject, use a second anchor when another view needs the same

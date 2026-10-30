@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Ripple Output: make yellow anchor markers optional and off by default for comparisons.
+
 - Add VAE DeGrid: removes the 2px pixel grid that Qwen Image, Qwen Image 2.1 and Wan 2.1
   VAEs leave in decoded images and video frames. It measures the grid's checkerboard and
   stripe strengths at every pixel and subtracts only them, instead of notch-filtering
