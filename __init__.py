@@ -27,6 +27,8 @@ from .frame_slicer_node import NODE_DISPLAY_NAME_MAPPINGS as FRAME_SLICER_NAMES
 from .ripple_node import NODE_CLASS_MAPPINGS as RIPPLE_NODES
 from .ripple_node import NODE_DISPLAY_NAME_MAPPINGS as RIPPLE_NAMES
 from .ripple_node import register_ripple_routes
+from .vae_degrid_node import NODE_CLASS_MAPPINGS as VAE_DEGRID_NODES
+from .vae_degrid_node import NODE_DISPLAY_NAME_MAPPINGS as VAE_DEGRID_NAMES
 
 WEB_DIRECTORY = "./js"
 NODE_CLASS_MAPPINGS = {
@@ -70,6 +72,8 @@ NODE_CLASS_MAPPINGS.update(FRAME_SLICER_NODES)
 NODE_DISPLAY_NAME_MAPPINGS.update(FRAME_SLICER_NAMES)
 NODE_CLASS_MAPPINGS.update(RIPPLE_NODES)
 NODE_DISPLAY_NAME_MAPPINGS.update(RIPPLE_NAMES)
+NODE_CLASS_MAPPINGS.update(VAE_DEGRID_NODES)
+NODE_DISPLAY_NAME_MAPPINGS.update(VAE_DEGRID_NAMES)
 
 register_speedpaint_routes()
 register_frame_number_routes()

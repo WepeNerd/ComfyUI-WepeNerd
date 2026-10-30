@@ -411,6 +411,57 @@ small aspect-ratio changes from rounding; the whole image is retained without
 cropping. Supports upscaling and downscaling with ComfyUI's **lanczos** (default),
 **bicubic**, **bilinear**, **nearest-exact**, and **area** interpolation.
 
+## VAE DeGrid
+
+**Category:** `WepeNerd/Image` · **Input:** `IMAGE` · **Outputs:** `image`, `removed_grid`.
+
+Removes the faint 2px pixel grid that the Qwen Image, Qwen Image 2.1 and Wan 2.1
+VAEs leave in decoded images and video frames (and so Krea2, Anima and other
+models built on them). The grid is easy to miss at 100% zoom, but sharpening,
+upscaling and restorers such as SeedVR2 amplify it or rebuild it as detail.
+
+Connect it straight after **VAE Decode**, before any resize, sharpening or
+upscaling. A resize scrambles the lattice so it can no longer be measured, and
+the node will then report no grid.
+
+| Input | Description |
+|---|---|
+| `strength` | How much of the measured grid to subtract; default 1. 0 leaves the image untouched, for A/B checks. |
+| `window` | Size in pixels of the area over which the grid's strength is measured; default 8 (3-32). Smaller follows a grid whose strength changes quickly across the image; larger is more precise and spares fine texture even better. |
+| `skip_when_clean` | On by default. When the batch has no grid (under 0.5/255), it is passed through bit-for-bit. The decision covers the whole batch, so the frames of a video are all treated alike. Off removes whatever is found anyway. |
+| `preview` | What `removed_grid` shows: **strength map** (default) is bright where the grid was strong and reads at any size; **lattice 4x/8x zoom** magnify the centre of the removed pattern so the 2px grid is visible; **lattice full frame** shows all of it, which looks like gray noise unless viewed at 100%. |
+
+After a run the node shows the strength it measured, roughly peak-to-peak on the
+0-255 scale, and its three parts: checkerboard, vertical stripes and horizontal
+stripes. Native decodes typically measure 1.5-5/255; an image that has been through
+an upscaler or a resize measures well under 0.5/255. For a batch it shows the
+range across frames.
+
+The output keeps the input's size, frame count, dtype and alpha channel. Work runs
+on ComfyUI's GPU one frame and channel at a time, so long videos don't need extra
+memory, and can be cancelled between frames.
+
+### How it differs from a notch filter
+
+A notch filter (as in the VAE DeGrid (Nyquist Notch) node and the Nyquist Notch
+shader) removes everything near the grid's frequencies. Real fine texture such
+as hair, pores and fabric lives in that band too, so a notch softens it and has to
+be clamped to spare edges, which in turn leaves some grid beside them.
+
+This node treats the grid as a signal of known shape. Any 2px lattice is a mix of
+a checkerboard and two stripe patterns, each with its own strength. The node
+measures each strength at every pixel by averaging over the window in a way that
+lets the lattice add up while real detail cancels (lock-in detection), with
+edges given less say. The measured strength may follow the image, since the grid
+is usually stronger on bright or busy areas. Only that measured lattice is
+subtracted, so texture and edges pass through.
+
+In tests on photos with a synthetic VAE-style grid added, the notch removed more
+real detail than grid (the result was further from the clean image than the input
+was), while this node brought the image 8-20 dB closer to the clean original.
+Forced onto a photo with no grid, it changed pixels by 0.04-0.16/255 on average,
+against 0.25-2/255 for the notch.
+
 ## Qwen Edit Mask
 
 **Category:** `WepeNerd/Qwen Edit Align`.

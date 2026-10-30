@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add VAE DeGrid: removes the 2px pixel grid that Qwen Image, Qwen Image 2.1 and Wan 2.1
+  VAEs leave in decoded images and video frames. It measures the grid's checkerboard and
+  stripe strengths at every pixel and subtracts only them, instead of notch-filtering
+  the band, so fine texture and edges are kept. Shows the measured strength, passes
+  grid-free batches through untouched (one decision per batch, so video frames match),
+  and previews a strength map or a zoom of the removed pattern.
 - Add H3 Ripple video editing with **Ripple Clip**, **Ripple From Frames**,
   **Ripple Apply**, and **Ripple Output**, using MiniMax H3 FL2VA and `H3_Ripple_v1`.
   - Select a time window, megapixel size and crop, with aspect-preserving resizing

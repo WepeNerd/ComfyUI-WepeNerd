@@ -8,6 +8,7 @@ H3 Ripple video edit propagation for ComfyUI.
 | **Drag Resolution** | Set dimensions visually with aspect-ratio and divisor controls |
 | **Resolution Suggest** | Calculate dimensions from a target size or scale factor |
 | **Resize Image Megapixels** | Resize an image batch to a target area without cropping |
+| **VAE DeGrid** | Remove the 2px pixel grid that Qwen Image, Qwen Image 2.1 and Wan 2.1 VAEs leave in decoded images and video, without softening real detail |
 | **Zoom Crop** | Remove width/height pixels and pick the kept area with a one-click 5×5 picker |
 | **Load Video (Upload)** | Load a clip by frame cap and skip into an IMAGE batch, with audio, transparency mask, model frame presets, a readout of what will load, and a preview that loops the clip |
 | **Save Video** | Save an IMAGE batch as MP4 (H.264, H.265, AV1), WebM, ProRes, lossless FFV1, GIF or WebP in one pass, with audio, transparency and the workflow embedded; no FFmpeg executable needed |
@@ -69,6 +70,9 @@ in a generation workflow.
   **WepeNerd/Video › Save Video**. MP4 · H.264 has broad player support; pick WebM, ProRes,
   FFV1, GIF or WebP when you need transparency. Drop the saved file onto the canvas
   to reload its workflow.
+- **VAE DeGrid:** put it straight after **VAE Decode** (before any resize, sharpener or
+  upscaler) and leave the defaults. It shows the grid strength it measured; a batch with
+  no grid passes through untouched. See [VAE DeGrid](docs/nodes.md#vae-degrid).
 - **Liquify:** load an image, or connect IMAGE and Queue once to see its preview.
   Drag to warp, use Undo/Redo, then Queue to render at the source resolution.
 - **Masked LoRA:** connect a native Krea2 MODEL, select a LoRA, and open **Edit mask**.
