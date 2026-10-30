@@ -1,2 +1,2 @@
-// Add the main YouTube video URL here when the demo is ready.
+// Optional YouTube URL; leave empty to use the included demo video.
 window.RIPPLE_DEMO_URL = '';

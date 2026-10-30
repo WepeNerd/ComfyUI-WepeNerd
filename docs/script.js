@@ -40,17 +40,12 @@ if (window.RIPPLE_DEMO_URL) {
   }
   if (videoId && /^[\w-]{11}$/.test(videoId)) {
     const container = document.querySelector('#demo-embed');
-    const title = document.createElement('h2');
-    title.textContent = 'The full walkthrough';
-    title.id = 'demo-title';
     const frame = document.createElement('iframe');
     frame.src = `https://www.youtube-nocookie.com/embed/${videoId}`;
     frame.title = 'H3 Ripple — full demo and walkthrough';
     frame.loading = 'lazy';
     frame.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
     frame.allowFullscreen = true;
-    document.querySelector('#demo-placeholder').remove();
-    container.append(title, frame);
-    container.hidden = false;
+    container.replaceChildren(frame);
   }
 }
