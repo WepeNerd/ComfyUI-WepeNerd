@@ -13,17 +13,17 @@ H3 Ripple video edit propagation for ComfyUI.
 | **Load Video (Upload)** | Load a clip by frame cap and skip into an IMAGE batch, with audio, transparency mask, model frame presets, a readout of what will load, and a preview that loops the clip |
 | **Save Video** | Save an IMAGE batch as MP4 (H.264, H.265, AV1), WebM, ProRes, lossless FFV1, GIF or WebP in one pass, with audio, transparency and the workflow embedded; no FFmpeg executable needed |
 | **Duration Selector** | Pick a clip length that is legal for LTX, MiniMax H3, Wan, Hunyuan, Cosmos or Mochi, as frames or seconds kept in sync |
-| **Frame Slicer** | Keep a run of frames (`start` to `stop`) from an IMAGE batch, like RES4LYF's Frames Slice |
-| **Speedpaint** | Sketch from a blank canvas or imported image and output an IMAGE |
-| **Paint Mask** | Paint a MASK over an uploaded or connected image and pass the IMAGE downstream |
-| **Liquify Image** | Push-warp files or connected IMAGE batches with editable strokes and full-resolution output |
+| **Frame Slicer** | Keep a run of frames (`start` to `stop`) from an IMAGE batch |
+| **Speedpaint** | Basic painting on a blank canvas or imported image, updated directly downstream |
+| **Paint Mask** | Paint a mask over an uploaded or connected image, updated directly downstream |
+| **Liquify Image** | Push-warp files or connected image batches with editable strokes, updated directly downstream |
 | **Qwen Edit Mask** | Paint where a Qwen-Image 2.1 edit should happen and get a guided reference image, mask and prompt |
 | **Image Edit Align Composite** | Automatically align Qwen, Krea2 or other image edits and composite through a supplied or automatic mask |
 | **Image Edit Difference Mask** | Align and isolate visual edits, with mask preview and cleanup controls |
 | **Image Edit Measure Drift** | Optional measurement for inspecting or reusing an alignment fit |
-| **Sigma Curve** | Draw a SIGMAS schedule by dragging points on a graph, with presets and exact numeric entry |
-| **Slider** | Map a compact FLOAT control to your preferred strength range |
-| **Load LoRA Masked · Beta** | Apply spatial LoRA/LoKr regions to native Krea2 models |
+| **Sigma Curve** | Draw a custom sigma schedule by dragging points on a graph, with presets and exact numeric entry |
+| **Slider** | Remap slider loras to a standard strength range |
+| **Load LoRA Masked** | Mask which areas of an image each lora influences  |
 | **H3 Ripple** | Edit a frame of a shot in any image editor; MiniMax H3 carries the edit through the whole shot |
 
 **H3 Ripple:** [Watch the examples and download the workflows](https://wepenerd.github.io/ComfyUI-WepeNerd/).
