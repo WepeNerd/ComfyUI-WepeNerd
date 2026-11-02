@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- H3 Ripple: every marker gets its own anchor output. Ripple Clip and Ripple From Frames show
+  `anchor_1` … `anchor_N`, one per marker (up to 16), adding and removing outputs as markers
+  change; Ripple Apply shows the matching `edited_anchor_N` inputs, or adds an empty input each
+  time you connect the last one when it can't see the source. Connected slots are never removed,
+  and saved workflows load unchanged.
+
 - Ripple Output: make yellow anchor markers optional and off by default for comparisons.
 
 - Add VAE DeGrid: removes the 2px pixel grid that Qwen Image, Qwen Image 2.1 and Wan 2.1

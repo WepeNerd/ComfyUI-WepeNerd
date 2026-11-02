@@ -179,6 +179,24 @@ export function parseMarkers(json, length) {
     return out;
 }
 
+// Anchor slots are numbered by marker ID and always contiguous from 1, so output slot indices keep
+// matching the backend's anchor_N outputs. Clip / From Frames show anchor_1 up to the highest marker ID
+// and keep any linked anchor, so removing a marker never drops a connection.
+export function anchorOutputCount(markerIds, linkedIds, max) {
+    if (!(max >= 1)) return 0;
+    return Math.min(max, Math.max(1, ...markerIds, ...linkedIds));
+}
+
+// Apply shows edited_anchor_1 up to its source's highest marker ID. When the source is unknown (not
+// connected, or behind a subgraph) it grows like ComfyUI's Autogrow inputs: connecting the last input
+// adds an empty one below it. Connected inputs always stay.
+export function anchorInputCount(connectedIds, sourceMarkerIds, max) {
+    if (!(max >= 1)) return 0;
+    const connected = Math.max(0, ...connectedIds);
+    const wanted = sourceMarkerIds ? Math.max(connected, ...sourceMarkerIds) : connected + 1;
+    return Math.min(max, Math.max(1, wanted));
+}
+
 // One marker on the window's first frame (ripple_core.default_markers).
 export function defaultMarkers() {
     return [{ id: 1, frame: 0, edited: "", edited_at: null }];

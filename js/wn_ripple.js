@@ -2,9 +2,9 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import {
-    DURATION_OPTIONS, FPS, MAX_DURATION_FRAMES, aspectMismatch, cropForAspect, cropMatches, dragCrop, durationFrames, fitWindow,
-    gridFrames, gridIndexAt, hitMarker, hitTest, makeLayout, moveMarker, outputGeometry, parseCrop, parseMarkers,
-    resizeWindow, retainSourceFrames, seekTime, suggestFrame, tickStep, timecode,
+    DURATION_OPTIONS, FPS, MAX_DURATION_FRAMES, anchorInputCount, anchorOutputCount, aspectMismatch, cropForAspect, cropMatches,
+    dragCrop, durationFrames, fitWindow, gridFrames, gridIndexAt, hitMarker, hitTest, makeLayout, moveMarker, outputGeometry,
+    parseCrop, parseMarkers, resizeWindow, retainSourceFrames, seekTime, suggestFrame, tickStep, timecode,
 } from "./ripple_timeline.mjs";
 
 const MARGIN = 14;
@@ -69,6 +69,85 @@ function el(tag, attrs = {}, ...children) {
     return node;
 }
 
+// ---- anchor slots ---------------------------------------------------------------------------------
+// The backend declares anchor_1..anchor_N outputs and edited_anchor_1..N inputs; the canvas shows only those
+// in use. Clip / From Frames show one output per marker ID; Apply shows the inputs for its source's markers,
+// or grows like ComfyUI's Autogrow inputs when the source is unknown. Linked slots are never removed.
+const ANCHOR_OUTPUT = /^anchor_(\d+)$/;
+const ANCHOR_INPUT = /^edited_anchor_(\d+)$/;
+const SOURCES = ["WN_RippleClip", "WN_RippleFromFrames"];
+const slotId = (slot, pattern) => Number(pattern.exec(slot?.name ?? "")?.[1]) || 0;
+
+// Marker IDs set on a Clip / From Frames node, or null when a connected input supplies them.
+function markerIds(node) {
+    const widget = widgetOf(node, "markers");
+    if (!widget || node.inputs?.some((input) => input.name === "markers" && input.link != null)) return null;
+    return parseMarkers(widget.value, MAX_DURATION_FRAMES).map((marker) => marker.id);
+}
+
+// The Clip / From Frames node feeding an Apply's ripple input (through Reroute nodes), if any.
+function rippleSource(node) {
+    const slot = node.inputs?.findIndex((input) => input.name === "ripple") ?? -1;
+    if (slot < 0 || node.inputs[slot].link == null) return null;
+    let source = node.getInputNode?.(slot);
+    for (let hops = 0; source?.type === "Reroute" && hops < 64; hops++) source = source.getInputNode?.(0);
+    return SOURCES.includes(source?.type) ? source : null;
+}
+
+function syncAnchorOutputs(node, limits) {
+    const { base, max } = limits;
+    const outputs = node.outputs ?? [];
+    // Output slots map to the backend by position: only touch the expected base + anchor_1..k layout.
+    if (!max || outputs.length < base || outputs.slice(0, base).some((slot) => slotId(slot, ANCHOR_OUTPUT))
+        || outputs.slice(base).some((slot, index) => slotId(slot, ANCHOR_OUTPUT) !== index + 1)) return false;
+    const ids = markerIds(node);
+    const linked = outputs.slice(base).filter((slot) => slot.links?.length).map((slot) => slotId(slot, ANCHOR_OUTPUT));
+    const wanted = ids ? anchorOutputCount(ids, linked, max) : max;
+    let changed = false;
+    while (node.outputs.length > base + wanted && !node.outputs.at(-1).links?.length) {
+        node.removeOutput(node.outputs.length - 1);
+        changed = true;
+    }
+    for (let id = node.outputs.length - base + 1; id <= wanted; id++) {
+        const tooltip = limits.tooltips?.[base + id - 1];
+        node.addOutput(`anchor_${id}`, "IMAGE", tooltip ? { tooltip } : undefined);
+        changed = true;
+    }
+    return changed;
+}
+
+function syncAnchorInputs(node, limits) {
+    const { max } = limits;
+    if (!max || !node.inputs) return false;
+    const anchors = node.inputs.map((input, index) => ({ input, index, id: slotId(input, ANCHOR_INPUT) })).filter((entry) => entry.id);
+    const source = rippleSource(node);
+    const connected = anchors.filter((entry) => entry.input.link != null).map((entry) => entry.id);
+    const wanted = anchorInputCount(connected, source ? markerIds(source) : null, max);
+    const kept = new Set(connected), removed = [];
+    for (const entry of anchors) {
+        if (entry.input.link != null) continue;
+        if (entry.id > wanted || kept.has(entry.id)) removed.push(entry.index);
+        else kept.add(entry.id);
+    }
+    for (const index of removed.sort((a, b) => b - a)) node.removeInput(index);
+    let added = false;
+    for (let id = 1; id <= wanted; id++) {
+        if (kept.has(id)) continue;
+        node.addInput(`edited_anchor_${id}`, "IMAGE");
+        added = true;
+    }
+    return added || removed.length > 0;
+}
+
+// Keep any extra height the user gave the node while slots come and go.
+function resizeForSlots(node, change) {
+    const before = node.computeSize?.()[1] ?? 0;
+    if (!change() || !node.size) return;
+    const after = node.computeSize?.()[1] ?? 0;
+    node.setSize?.([node.size[0], Math.max(after, node.size[1] + after - before)]);
+    node.setDirtyCanvas?.(true, true);
+}
+
 function installRipple(node) {
     const state = {
         info: null, video: null, request: 0, player: null, playing: false, drag: null, active: 0,
@@ -112,6 +191,7 @@ function installRipple(node) {
         setValue(node, "window_start", fitted.start);
         setValue(node, "markers", JSON.stringify(list));
         remember(node);
+        node.wnSyncAnchors?.();
         if (!state.playing && list[state.active]) showFrame(fitted.start + list[state.active].frame);
         requestRender();
         node.setDirtyCanvas?.(true, true);
@@ -619,7 +699,7 @@ function installRipple(node) {
         const exec = state.executed;
         const changed = exec && (exec[0] !== now.start || exec[1] !== now.length || exec[3] !== state.video || JSON.stringify(exec[2]) !== JSON.stringify(now.frames));
         advanced.append(el("div", { class: "ripple-meta" },
-            el("p", {}, "Local editors: connect anchor_1 or anchor_2 to an image editor, then edited_anchor_1 or edited_anchor_2 on Ripple Apply. Individual inputs override the batch and uploads. frames_to_edit / edited_images remains a batch in time order."),
+            el("p", {}, `Local editors: each marker gets its own anchor output (anchor_1 for marker 1, and so on, up to ${node.wnAnchorLimits?.max ?? 16}). Connect it to an image editor, then the editor to the matching edited_anchor input on Ripple Apply, which shows one per marker. Individual inputs override the batch and uploads. frames_to_edit / edited_images remains a batch in time order.`),
             el("p", {}, changed ? "Selection changed: run the frame extraction again for your connected editor."
                 : exec ? "Frame extraction matches this selection." : "Run the Clip node once to extract frames for a connected editor."),
             el("p", {}, "On the canvas: ← / → step a frame · Shift + arrows move the shot · Tab switches markers · Ctrl+V pastes an edit onto the selected frame. You can also drop an image onto a card."),
@@ -887,7 +967,9 @@ function installMessages(node) {
     const lines = () => {
         const connected = (name) => node.inputs?.some((input) => input.name === name && input.link != null);
         const source = [];
-        for (const id of [1, 2]) if (connected(`edited_anchor_${id}`)) source.push(`Anchor ${id}: connected image`);
+        const anchors = (node.inputs ?? []).filter((input) => input.link != null).map((input) => slotId(input, ANCHOR_INPUT))
+            .filter(Boolean).sort((a, b) => a - b);
+        if (anchors.length) source.push(`Anchor${anchors.length > 1 ? "s" : ""} ${anchors.join(", ")}: connected image${anchors.length > 1 ? "s" : ""}`);
         if (connected("edited_images")) source.push("Batch: remaining anchors in time order");
         if (!source.length) source.push("Edits: uploads on Ripple Clip");
         return [...source, ...state.lines];
@@ -929,29 +1011,65 @@ function installMessages(node) {
 app.registerExtension({
     name: "WepeNerd.H3Ripple",
     beforeRegisterNodeDef(nodeType, nodeData) {
-        if (!["WN_RippleClip", "WN_RippleApply"].includes(nodeData.name)) return;
+        if (!["WN_RippleClip", "WN_RippleFromFrames", "WN_RippleApply"].includes(nodeData.name)) return;
+        const isApply = nodeData.name === "WN_RippleApply";
+        const outputNames = nodeData.output_name ?? nodeData.output ?? [];
+        const limits = isApply
+            ? { max: Object.keys(nodeData.input?.optional ?? {}).filter((name) => ANCHOR_INPUT.test(name)).length }
+            : { max: outputNames.filter((name) => ANCHOR_OUTPUT.test(name)).length,
+                base: outputNames.filter((name) => !ANCHOR_OUTPUT.test(name)).length, tooltips: nodeData.output_tooltips };
+        // Show only the anchor slots in use; Clip / From Frames also update the Apply nodes mirroring them.
+        nodeType.prototype.wnSyncAnchors = function () {
+            if (this._wnSyncingAnchors) return;
+            this._wnSyncingAnchors = true;
+            try {
+                resizeForSlots(this, () => (isApply ? syncAnchorInputs : syncAnchorOutputs)(this, limits));
+            } finally {
+                this._wnSyncingAnchors = false;
+            }
+            if (!isApply) for (const apply of this.graph?.findNodesByType?.("WN_RippleApply") ?? []) apply.wnSyncAnchors?.();
+        };
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             const result = onNodeCreated?.apply(this, arguments);
+            this.wnAnchorLimits = limits;
             if (nodeData.name === "WN_RippleClip") this.wnRipple = installRipple(this);
-            else installMessages(this);
+            else if (isApply) installMessages(this);
+            else {
+                // From Frames: its anchor outputs follow the markers JSON as you type.
+                const node = this, markers = widgetOf(this, "markers");
+                const sync = () => queueMicrotask(() => node.wnSyncAnchors());
+                const callback = markers?.callback;
+                if (markers) markers.callback = function () {
+                    const value = callback?.apply(this, arguments);
+                    sync();
+                    return value;
+                };
+                markers?.element?.addEventListener?.("input", sync);
+            }
+            // Trim the declared slots right away, so a workflow loading into this node starts from fewer slots.
+            this.wnSyncAnchors();
             return result;
         };
         const onConnectionsChange = nodeType.prototype.onConnectionsChange;
         nodeType.prototype.onConnectionsChange = function () {
             const result = onConnectionsChange?.apply(this, arguments);
             queueMicrotask(() => {
+                this.wnSyncAnchors();
                 for (const clip of this.graph?.findNodesByType("WN_RippleClip") ?? []) clip.wnRipple?.refresh();
-                if (nodeData.name === "WN_RippleApply") this.setSize?.([this.size[0], this.computeSize()[1]]);
+                if (isApply) this.setSize?.([this.size[0], this.computeSize()[1]]);
             });
             return result;
         };
-        if (nodeData.name !== "WN_RippleClip") return;
         const onConfigure = nodeType.prototype.onConfigure;
         nodeType.prototype.onConfigure = function () {
             const result = onConfigure?.apply(this, arguments);
-            restore(this);
-            setTimeout(() => { restore(this); this.wnRipple?.configure(); this.setDirtyCanvas?.(true, true); }, 0);
+            if (nodeData.name === "WN_RippleClip") restore(this);
+            setTimeout(() => {
+                if (nodeData.name === "WN_RippleClip") { restore(this); this.wnRipple?.configure(); }
+                this.wnSyncAnchors();
+                this.setDirtyCanvas?.(true, true);
+            }, 0);
             return result;
         };
     },

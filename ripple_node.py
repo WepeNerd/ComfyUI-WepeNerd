@@ -329,32 +329,45 @@ def framing_inputs():
     }
 
 
+# Markers 1..MAX_ANCHORS get their own anchor_N output and edited_anchor_N input. The UI shows only the
+# slots in use; markers beyond this still work through uploads or the edited_images batch.
+MAX_ANCHORS = 16
+ANCHOR_NAMES = tuple(f"anchor_{i}" for i in range(1, MAX_ANCHORS + 1))
+EDITED_ANCHOR_NAMES = tuple(f"edited_{name}" for name in ANCHOR_NAMES)
+
+
+def anchor_tooltip(identity: int) -> str:
+    if identity == 1:
+        return "The image for marker 1, independent of its position on the timeline."
+    return f"The image for marker {identity}; empty until marker {identity} exists."
+
+
 def anchor_outputs(window, markers, geometry):
+    """The marked frames in time order, then one image per marker ID 1..MAX_ANCHORS (empty if absent)."""
     frames = trim_content(window[[m["frame"] for m in markers]], geometry)
     by_id = {m["id"]: frames[i:i + 1] for i, m in enumerate(markers)}
     empty = frames[:0].clone()
-    return frames, by_id.get(1, empty), by_id.get(2, empty)
+    return frames, tuple(by_id.get(identity, empty) for identity in range(1, MAX_ANCHORS + 1))
 
 
 class WN_RippleClip:
     CATEGORY = "WepeNerd/H3 Ripple"
     FUNCTION = "select"
-    RETURN_TYPES = ("IMAGE", RIPPLE_TYPE, "IMAGE", "AUDIO", "IMAGE", "IMAGE")
-    RETURN_NAMES = ("frames_to_edit", "ripple", "source_window", "audio", "anchor_1", "anchor_2")
+    RETURN_TYPES = ("IMAGE", RIPPLE_TYPE, "IMAGE", "AUDIO") + ("IMAGE",) * MAX_ANCHORS
+    RETURN_NAMES = ("frames_to_edit", "ripple", "source_window", "audio") + ANCHOR_NAMES
     OUTPUT_TOOLTIPS = (
         "The exact frames to edit (one per marker, in time order), at the size H3 will generate.",
         "Window frames, edited-frame markers and size for Ripple Apply / Ripple Output.",
         "The original frames of the window at the generation size.",
         "The source audio of the window (None if the video has no audio).",
-        "The image for marker 1, independent of its position on the timeline.",
-        "The image for marker 2; empty until a second marker exists.",
-    )
+    ) + tuple(anchor_tooltip(i) for i in range(1, MAX_ANCHORS + 1))
     DESCRIPTION = (
         "Load a video, drag the blue window (the frames H3 will generate) along the timeline and move the "
         "marker to the frame you want to edit. Download the frame, edit it, then upload, drop or paste the edit "
-        "onto its card. Add a second marker when the edit needs another anchor (for example a view the first "
-        "frame doesn't show) and give it the same change. Arrow keys step the selected marker; Shift+arrows "
-        "move the window; Tab switches markers; Ctrl+V pastes an edit onto the selected marker."
+        "onto its card. Add another marker when the edit needs another anchor (for example a view the first "
+        "frame doesn't show) and give it the same change; each marker gets its own anchor_N output. Arrow keys "
+        "step the selected marker; Shift+arrows move the window; Tab switches markers; Ctrl+V pastes an edit "
+        "onto the selected marker."
     )
 
     @classmethod
@@ -415,8 +428,8 @@ class WN_RippleClip:
         cw, ch = geometry["content_rect"][2:]
         text = [rc.describe(start, frames_n, edits) + f" · {cw}x{ch}", *notes]
         ui = {"text": text, "binding": [start, frames_n, edits, video], "geometry": [geometry]}
-        frames, anchor1, anchor2 = anchor_outputs(window, marker_list, geometry)
-        return {"ui": ui, "result": (frames, ripple, window, audio, anchor1, anchor2)}
+        frames, anchors = anchor_outputs(window, marker_list, geometry)
+        return {"ui": ui, "result": (frames, ripple, window, audio, *anchors)}
 
 
 class WN_RippleFromFrames(io.ComfyNode):
@@ -445,7 +458,8 @@ class WN_RippleFromFrames(io.ComfyNode):
             ],
             outputs=[io.Image.Output(display_name="frames_to_edit"), io.Custom(RIPPLE_TYPE).Output(display_name="ripple"),
                      io.Image.Output(display_name="source_window"), io.Audio.Output(display_name="audio"),
-                     io.Image.Output(display_name="anchor_1"), io.Image.Output(display_name="anchor_2")])
+                     *[io.Image.Output(display_name=name, tooltip=anchor_tooltip(i))
+                       for i, name in enumerate(ANCHOR_NAMES, 1)]])
 
     @classmethod
     def execute(cls, images, frame_rate, duration, megapixels, window_start, markers, audio=None,
@@ -476,8 +490,8 @@ class WN_RippleFromFrames(io.ComfyNode):
         context = {"window": window, "markers": marker_list, "length": length, "width": geometry["width"],
                    "height": geometry["height"], "fps": rc.FPS, "window_start": start, "window_time": start / rc.FPS,
                    "audio": sound, "source": "frames", "geometry": geometry}
-        selected, anchor1, anchor2 = anchor_outputs(window, marker_list, geometry)
-        return io.NodeOutput(selected, context, window, sound, anchor1, anchor2,
+        selected, anchors = anchor_outputs(window, marker_list, geometry)
+        return io.NodeOutput(selected, context, window, sound, *anchors,
                              ui={"text": [*notes, *marker_notes], "geometry": [geometry]})
 
 
@@ -492,8 +506,9 @@ class WN_RippleApply:
     )
     DESCRIPTION = (
         "Builds the conditioning the H3 Ripple LoRA expects: the original window as a guide plus one "
-        "guide per edited frame. Explicit edited_anchor inputs override the chronological edited_images batch, "
-        "which overrides uploaded edits. Use the FL2VA model "
+        "guide per edited frame. An edited_anchor_N input (marker ID N) overrides the chronological edited_images "
+        "batch, which overrides uploaded edits; a new empty edited_anchor input appears as you connect one. "
+        "Use the FL2VA model "
         "with the Ripple LoRA, a BasicGuider (CFG 1) and any H3 sampler. The default prompt works for every edit. "
         "Re-runs with new edits reuse the encoded prompt and source clip."
     )
@@ -511,26 +526,29 @@ class WN_RippleApply:
             "optional": {
                 "edited_images": ("IMAGE", {"tooltip": "Edited frames from an in-graph editor: one per marker, in time "
                                                        "order. Overrides the images attached on Ripple Clip."}),
-                "edited_anchor_1": ("IMAGE", {"tooltip": "Exactly one edited image for marker 1. Overrides its batch or upload."}),
-                "edited_anchor_2": ("IMAGE", {"tooltip": "Exactly one edited image for marker 2. Requires a second marker."}),
+                **{name: ("IMAGE", {"tooltip": f"Exactly one edited image for marker {i}. Overrides its batch or upload."
+                                    + ("" if i == 1 else f" Requires marker {i}.")})
+                   for i, name in enumerate(EDITED_ANCHOR_NAMES, 1)},
             },
         }
 
-    def apply(self, clip, vae, ripple, prompt, edited_images=None,
-              edited_anchor_1=None, edited_anchor_2=None):
+    def apply(self, clip, vae, ripple, prompt, edited_images=None, **edited_anchors):
         import node_helpers
         from comfy_extras.nodes_minimax_h3 import _empty_av_latent
 
+        unknown = sorted(set(edited_anchors) - set(EDITED_ANCHOR_NAMES))
+        if unknown:
+            raise TypeError(f"Unknown Ripple Apply input: {', '.join(unknown)}")
         width, height, length = ripple["width"], ripple["height"], ripple["length"]
         markers, _ = rc.parse_markers(ripple["markers"], length)
         geometry = ripple["geometry"]
-        explicit = {1: edited_anchor_1, 2: edited_anchor_2}
+        explicit = {i: edited_anchors[name] for i, name in enumerate(EDITED_ANCHOR_NAMES, 1)
+                    if edited_anchors.get(name) is not None}
         for identity, image in explicit.items():
-            if image is not None:
-                if not any(m["id"] == identity for m in markers):
-                    raise ValueError(f"edited_anchor_{identity} needs marker {identity} on Ripple Clip.")
-                if len(image) != 1:
-                    raise ValueError(f"edited_anchor_{identity} must contain exactly one image.")
+            if not any(m["id"] == identity for m in markers):
+                raise ValueError(f"edited_anchor_{identity} needs marker {identity} on Ripple Clip.")
+            if len(image) != 1:
+                raise ValueError(f"edited_anchor_{identity} must contain exactly one image.")
         window = ripple["window"]
         notes, checks, keyframes_edit, unchanged = [], [], [], 0
         if edited_images is not None and len(edited_images) != len(markers):

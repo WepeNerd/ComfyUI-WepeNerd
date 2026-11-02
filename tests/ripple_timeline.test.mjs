@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-    DURATION_OPTIONS, FPS, MAX_DURATION_FRAMES, aspectMismatch, cropForAspect, cropMatches, defaultMarkers, describe, dragCrop, durationFrames,
+    DURATION_OPTIONS, FPS, MAX_DURATION_FRAMES, anchorInputCount, anchorOutputCount, aspectMismatch, cropForAspect, cropMatches, defaultMarkers, describe, dragCrop, durationFrames,
     fitWindow, freeFrame, gridFrames, hitMarker, hitTest, makeLayout, moveMarker, outputGeometry,
     parseCrop, parseMarkers, resizeWindow, retainSourceFrames, seekTime, suggestFrame, tickStep,
 } from "../js/ripple_timeline.mjs";
@@ -190,4 +190,30 @@ test("readout and aspect warnings describe visible content", () => {
     assert.equal(aspectMismatch(1344, 768, { width: 672, height: 384 }), false);
     assert.equal(aspectMismatch(1024, 1024, { width: 672, height: 384 }), true);
     assert.equal(aspectMismatch(0, 0, { width: 672, height: 384 }), false);
+});
+
+test("anchor outputs follow the highest marker ID and never drop a linked anchor", () => {
+    assert.equal(anchorOutputCount([1], [], 16), 1);
+    assert.equal(anchorOutputCount([2, 1, 3], [], 16), 3);
+    assert.equal(anchorOutputCount([1, 3], [], 16), 3); // contiguous slots: anchor_2 stays as a gap
+    assert.equal(anchorOutputCount([1], [2], 16), 2); // marker 2 removed while anchor_2 is linked
+    assert.equal(anchorOutputCount([1, 20], [], 16), 16);
+    assert.equal(anchorOutputCount([], [], 16), 1);
+    assert.equal(anchorOutputCount([1, 2], [], 0), 0);
+});
+
+test("apply inputs mirror the source's markers, or grow one at a time without a source", () => {
+    // Known source: one input per marker ID, plus any still-connected ones.
+    assert.equal(anchorInputCount([], [1], 16), 1);
+    assert.equal(anchorInputCount([1], [1], 16), 1);
+    assert.equal(anchorInputCount([], [1, 2, 3], 16), 3);
+    assert.equal(anchorInputCount([4], [1, 2], 16), 4);
+    assert.equal(anchorInputCount([], [1, 30], 16), 16);
+    // Unknown source: connected inputs plus one empty input below them, like ComfyUI's Autogrow.
+    assert.equal(anchorInputCount([], null, 16), 1);
+    assert.equal(anchorInputCount([1], null, 16), 2);
+    assert.equal(anchorInputCount([1, 2], null, 16), 3);
+    assert.equal(anchorInputCount([2], null, 16), 3);
+    assert.equal(anchorInputCount([16], null, 16), 16);
+    assert.equal(anchorInputCount([1], null, 0), 0);
 });

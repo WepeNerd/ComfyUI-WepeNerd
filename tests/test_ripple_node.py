@@ -201,7 +201,9 @@ class ClipTest(RippleTest):
     def test_clip_preserves_source_framing_and_returns_unpadded_anchors(self):
         write_numbered(self.root / "v.mkv", 240, 24, size=(192, 108))
         out = self.select(window_start=200, markers=json.dumps([{"id": 1, "frame": 50}]))
-        frame, context, window, audio, anchor1, anchor2 = out["result"]
+        frame, context, window, audio, anchor1, anchor2, *rest = out["result"]
+        self.assertEqual(len(rest), ripple.MAX_ANCHORS - 2)
+        self.assertTrue(all(len(anchor) == 0 for anchor in rest))
         self.assertEqual(context["window_start"], 133)
         self.assertEqual(tuple(window.shape), (107, 128, 192, 3))
         self.assertEqual(tuple(frame.shape), (1, 108, 192, 3))
@@ -215,7 +217,11 @@ class ClipTest(RippleTest):
         inputs = ripple.WN_RippleClip.INPUT_TYPES()
         self.assertEqual(list(inputs["required"]), ["video", "duration", "megapixels", "window_start", "markers"])
         self.assertEqual(json.loads(inputs["required"]["markers"][1]["default"])[0]["id"], 1)
-        self.assertEqual(ripple.WN_RippleClip.RETURN_NAMES[-2:], ("anchor_1", "anchor_2"))
+        names = ripple.WN_RippleClip.RETURN_NAMES
+        self.assertEqual(names[:6], ("frames_to_edit", "ripple", "source_window", "audio", "anchor_1", "anchor_2"))
+        self.assertEqual(names[4:], tuple(f"anchor_{i}" for i in range(1, ripple.MAX_ANCHORS + 1)))
+        self.assertEqual(len(ripple.WN_RippleClip.RETURN_TYPES), len(names))
+        self.assertEqual(len(ripple.WN_RippleClip.OUTPUT_TOOLTIPS), len(names))
         write_numbered(self.root / "v.mkv", 240, 24)
         self.assertIs(ripple.WN_RippleClip.VALIDATE_INPUTS("v.mkv", 12.0, 1.3), True)
         self.assertIsInstance(ripple.WN_RippleClip.VALIDATE_INPUTS("v.mkv", 0.0, .25), str)
@@ -223,10 +229,20 @@ class ClipTest(RippleTest):
     def test_anchor_identity_survives_crossing(self):
         write_numbered(self.root / "v.mkv", 240, 24)
         out = self.select(markers=json.dumps([{"id": 1, "frame": 60}, {"id": 2, "frame": 5}]))
-        frames, context, _, _, anchor1, anchor2 = out["result"]
+        frames, context, _, _, anchor1, anchor2, *_ = out["result"]
         self.assertEqual([(m["id"], m["frame"]) for m in context["markers"]], [(2, 5), (1, 60)])
         self.assertTrue(torch.equal(anchor1, frames[1:2]))
         self.assertTrue(torch.equal(anchor2, frames[:1]))
+
+    def test_every_marker_id_gets_its_own_anchor_output(self):
+        write_numbered(self.root / "v.mkv", 240, 24)
+        markers = [{"id": 3, "frame": 90}, {"id": 1, "frame": 2}, {"id": 5, "frame": 40}, {"id": 16, "frame": 70}]
+        frames, _, _, _, *anchors = self.select(markers=json.dumps(markers))["result"]
+        self.assertEqual(len(anchors), ripple.MAX_ANCHORS)
+        by_frame = {m["frame"]: i for i, m in enumerate(sorted(markers, key=lambda m: m["frame"]))}
+        for marker in markers:
+            self.assertTrue(torch.equal(anchors[marker["id"] - 1], frames[by_frame[marker["frame"]]:][:1]))
+        self.assertEqual([len(anchor) for anchor in anchors[1:4]], [0, 1, 0])
 
     def test_marker_changes_reuse_window_but_crop_changes_decode(self):
         write_numbered(self.root / "v.mkv", 144, 24, audio=True)
@@ -329,6 +345,33 @@ class ApplyTest(RippleTest):
         self.assertAlmostEqual(float(keyframes[1]["latent"].mean()),.6,places=3)
         self.assertAlmostEqual(float(keyframes[2]["latent"].mean()),.2,places=3)
 
+    def test_any_marker_id_can_take_an_explicit_anchor(self):
+        context = self.ripple_context([{"id": 1, "frame": 17}, {"id": 2, "frame": 3}, {"id": 3, "frame": 9},
+                                       {"id": 16, "frame": 12}])
+        out = ripple.WN_RippleApply().apply(FakeClip(), FakeVAE(), context, "prompt",
+            edited_images=torch.full((4,64,96,3),.8),
+            edited_anchor_3=torch.full((1,64,96,3),.3), edited_anchor_16=torch.full((1,64,96,3),.5))
+        keyframes = out["result"][0][0][1]["minimax_keyframes"]
+        self.assertEqual([k["resolved_frame_index"] for k in keyframes], [0, 3, 9, 12, 17])
+        np.testing.assert_allclose([float(k["latent"].mean()) for k in keyframes[1:]], [.8, .3, .5, .8], atol=.004)
+
+    def test_apply_declares_one_optional_input_per_anchor(self):
+        optional = ripple.WN_RippleApply.INPUT_TYPES()["optional"]
+        self.assertEqual(list(optional), ["edited_images", *(f"edited_anchor_{i}" for i in range(1, ripple.MAX_ANCHORS + 1))])
+        self.assertTrue(all(optional[name][0] == "IMAGE" for name in optional))
+        with self.assertRaisesRegex(TypeError, "edited_anchor_17"):
+            ripple.WN_RippleApply().apply(FakeClip(), FakeVAE(), self.ripple_context([{"id": 1, "frame": 0}]), "prompt",
+                                          edited_anchor_17=torch.rand(1,64,96,3))
+
+    def test_markers_past_the_anchor_inputs_use_their_uploads(self):
+        Image.fromarray(np.full((64,96,3),153,np.uint8)).save(self.root/"edit.png")
+        markers = [{"id": i, "frame": i, "edited": "edit.png"} for i in range(1, ripple.MAX_ANCHORS + 3)]
+        out = ripple.WN_RippleApply().apply(FakeClip(), FakeVAE(), self.ripple_context(markers), "prompt",
+                                            edited_anchor_2=torch.full((1,64,96,3),.2))
+        values = [float(k["latent"].mean()) for k in out["result"][0][0][1]["minimax_keyframes"][1:]]
+        self.assertEqual(len(values), ripple.MAX_ANCHORS + 2)
+        np.testing.assert_allclose(values, [.6, .2, *[.6] * ripple.MAX_ANCHORS], atol=.004)
+
     def test_mixed_explicit_batch_and_uploaded_edits(self):
         Image.fromarray(np.full((64,96,3),153,np.uint8)).save(self.root/"edit.png")
         context=self.ripple_context([{"id":1,"frame":2,"edited":"edit.png"},
@@ -344,6 +387,8 @@ class ApplyTest(RippleTest):
         vae=FakeVAE()
         with self.assertRaisesRegex(ValueError,"needs marker 2"):
             ripple.WN_RippleApply().apply(FakeClip(),vae,context,"prompt",edited_anchor_2=torch.rand(1,64,96,3))
+        with self.assertRaisesRegex(ValueError,"edited_anchor_7 needs marker 7"):
+            ripple.WN_RippleApply().apply(FakeClip(),vae,context,"prompt",edited_anchor_7=torch.rand(1,64,96,3))
         with self.assertRaisesRegex(ValueError,"exactly one"):
             ripple.WN_RippleApply().apply(FakeClip(),vae,context,"prompt",edited_anchor_1=torch.rand(2,64,96,3))
         self.assertEqual(vae.frames_encoded,[])
@@ -513,7 +558,8 @@ class FromFramesTest(RippleTest):
         sound={"waveform":torch.arange(32000,dtype=torch.float32)[None,None],"sample_rate":8000}
         out=ripple.WN_RippleFromFrames.execute(frames,30,22/24,.25,24,
                 json.dumps([{"id":1,"frame":17},{"id":2,"frame":3}]),audio=sound)
-        selected,context,window,audio,a1,a2=out.result
+        selected,context,window,audio,a1,a2,*rest=out.result
+        self.assertEqual(len(rest),ripple.MAX_ANCHORS-2)
         expected=[math.ceil((k+.5)*30/24)-1 for k in range(24,46)]
         self.assertEqual(ids((window.numpy()*255).round().astype(np.uint8)),expected)
         self.assertEqual(float(audio["waveform"][0,0,0]),8000)

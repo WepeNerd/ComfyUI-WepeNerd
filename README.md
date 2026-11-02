@@ -96,7 +96,8 @@ in a generation workflow.
   and require MiniMax H3 FL2VA, its text encoder and video VAE, and `H3_Ripple_v1`.
   Pick a video, time window, duration and megapixels; preview the crop before editing. The starting
   size is **0.25 MP**, with **107 frames / 4.46 seconds**. Download and edit a marked frame, then
-  upload, drop or paste it onto its card. Add a second anchor when another view needs the same change.
+  upload, drop or paste it onto its card. Add more anchors when other views need the same change; each
+  marker gets its own `anchor_N` output and a matching `edited_anchor_N` input on Ripple Apply.
   Changing only megapixels resizes the existing edits; changing the crop or frame needs a fresh review.
   The local-editor workflow starts with Ripple Output muted: run and review both Qwen images first,
   then enable Ripple Output and run the video. Source audio and a source | result comparison are saved.

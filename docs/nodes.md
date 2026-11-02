@@ -254,8 +254,12 @@ are resampled once, and the preview, anchor images and output use that same fram
 - **Advanced dimensions:** `output_width` and `output_height` are fit bounds, not a request to
   stretch the image. Set both to override megapixels, or leave both at zero. `resize_method`
   defaults to Lanczos.
-- **Numbered markers:** move an anchor to a useful frame. **+ Add frame** adds another. The separate `anchor_1` and `anchor_2` outputs follow marker IDs 1 and 2 even when the
-  markers cross on the timeline; the `frames_to_edit` batch remains in time order.
+- **Numbered markers:** move an anchor to a useful frame. **+ Add frame** adds another, and with it
+  another `anchor_N` output: `anchor_1` for marker 1, `anchor_2` for marker 2 and so on, up to 16.
+  Each output follows its marker ID even when markers cross on the timeline; the `frames_to_edit`
+  batch remains in time order. Removing a marker never removes a connected output: disconnect it
+  and it disappears. Outputs stay numbered from 1, so removing marker 2 of three leaves an empty
+  `anchor_2` until a new marker takes that number.
 - **Cards:** download the exact frame, edit it, then upload, drop or paste the result onto its
   card. Edits are stored in `input/ripple_edits`. Review warnings after changing the source video,
   marker, time window or crop: an image made for a different moment or framing may need to be redone.
@@ -274,8 +278,7 @@ megapixels therefore changes size without changing the requested crop.
 | `ripple` | The selected source window, marker identities, geometry and audio for Apply and Output. |
 | `source_window` | The prepared source window used by the H3 guide. |
 | `audio` | The window's source audio, or None. |
-| `anchor_1` | The single content frame belonging to marker ID 1. |
-| `anchor_2` | The single content frame belonging to marker ID 2, when present. |
+| `anchor_1` … `anchor_N` | The single content frame belonging to each marker ID, one output per marker (up to 16). Empty for an ID without a marker. |
 
 ### Ripple From Frames
 
@@ -286,8 +289,9 @@ padding as Ripple Clip. `window_start` and marker `frame` values use the 24 fps 
 frames are relative to the selected window. For example,
 `[{"id":1,"frame":0},{"id":2,"frame":53}]` creates two named anchors.
 
-The six outputs match Ripple Clip. Connect `ripple` to the same Apply and Output nodes, and
-send `anchor_1` / `anchor_2` through your editors to Apply's named inputs. The audio is sliced
+The outputs match Ripple Clip, with one `anchor_N` output per marker ID in `markers`. Connect
+`ripple` to the same Apply and Output nodes, and send the anchor outputs through your editors to
+Apply's matching `edited_anchor_N` inputs. The audio is sliced
 to the selected interval; if your loader already trimmed a clip, its audio must start at that
 batch's first frame. This node uses ordinary graph inputs rather than Ripple Clip's upload
 timeline and edit cards.
@@ -298,9 +302,15 @@ Builds the generic propagation prompt, the original window as a guide at frame 0
 edited-frame guide at each marker's position. Leave the propagation prompt in place; describe
 the visual change in the image editor instead.
 
+Apply shows one `edited_anchor_N` input per marker on the connected Ripple Clip or From Frames
+node, and updates as you add or remove markers. When it can't see the source (nothing connected
+yet, or the `ripple` link comes through a subgraph), it grows like ComfyUI's API nodes instead:
+connecting the last `edited_anchor` input adds an empty one below it. Connected inputs are never
+removed.
+
 Edited-image priority is resolved per marker:
 
-1. `edited_anchor_1` or `edited_anchor_2` for that marker's stable ID.
+1. The `edited_anchor_N` input matching that marker's stable ID N.
 2. The corresponding image in `edited_images`, matched to markers in time order.
 3. The uploaded image attached to its card.
 
@@ -330,7 +340,8 @@ then run again. Fixed Qwen seeds allow unchanged edits to be reused from ComfyUI
 Qwen uses `resolution = 0` and its encoder's own returned latent, with 25 steps, CFG 1, Euler and
 the simple schedule. It still rounds reference dimensions to multiples of 32; Apply resizes the
 whole result back to the Ripple content rectangle. To use only one anchor, remove marker 2,
-disconnect `edited_anchor_2`, and mute its editor/preview branch. To use another local image
+disconnect `edited_anchor_2`, and mute its editor/preview branch. For a third anchor, add a marker
+and copy an editing branch from `anchor_3` to `edited_anchor_3`. To use another local image
 model, replace a complete editing branch while keeping the same IMAGE input and output.
 
 ### Ripple Output
