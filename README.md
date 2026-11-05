@@ -94,6 +94,7 @@ in a generation workflow.
   [local image-editor workflow](example_workflows/H3_Ripple_Local_Editor.json) with two complete
   Qwen Image 2.1 editing branches. Both use **Ripple Clip → Ripple Apply → Ripple Output**
   and require MiniMax H3 FL2VA, its text encoder and video VAE, and `H3_Ripple_v1`.
+  H3 uses Pika H3 Flex at strength 1, **6 steps**, **LCM**, and the simple schedule.
   Pick a video, time window, duration and megapixels; preview the crop before editing. The starting
   size is **0.25 MP**, with **107 frames / 4.46 seconds**. Download and edit a marked frame, then
   upload, drop or paste it onto its card. Add more anchors when other views need the same change; each

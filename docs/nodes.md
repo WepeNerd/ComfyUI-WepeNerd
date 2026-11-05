@@ -220,9 +220,9 @@ window. Choose a workflow under **WepeNerd/H3 Ripple**:
 `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` with CLIP type `minimax`,
 `minimax_h3_video_vae_fp16.safetensors`, and `H3/H3_Ripple_v1.safetensors` at strength 1.
 Equivalent compatible H3 FL2VA weights can be selected in the loaders. The templates use
-BasicGuider (CFG 1), `res_multistep`, `simple`, and 20 steps. The optional
-`H3/MiniMax-H3-FL2VA-Acc-8Step_comfy.safetensors` loader starts bypassed; enable it and change
-the step count to 8 when using that accelerator.
+BasicGuider (CFG 1), `lcm`, `simple`, and **6 steps**, with the
+[Pika H3 Flex LoRA](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_fl2va_v1_bf16.safetensors)
+enabled at strength 1. Save `pika_h3_flex_fl2va_v1_bf16.safetensors` in `models/loras/H3/`.
 
 The local-editor template additionally needs these Qwen files:
 
