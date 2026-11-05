@@ -314,7 +314,7 @@ h1 span {
 }
 .example-picker {
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:repeat(5,minmax(0,1fr));
   gap:10px;
   margin-top:14px;
 }
@@ -744,6 +744,9 @@ footer strong {
   .example-picker {
     grid-template-columns:repeat(2,1fr);
     gap:8px;
+  }
+  .example-choice:last-child:nth-child(odd) {
+    grid-column:1 / -1;
   }
   .example-choice img {
     display:block;

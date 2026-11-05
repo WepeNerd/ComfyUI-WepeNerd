@@ -3,6 +3,7 @@ const examples = [
   { file: 'savanna-rhino', poster: 'savanna-rhino-reveal', category: '02 / Scene + subject', title: 'A different world, in the same shot', description: 'A green pasture and cow become a dry savanna and rhinoceros.', label: 'Original and Ripple comparison: pasture and cow changed to savanna and rhinoceros' },
   { file: 'bottle-replacement', poster: 'bottle-replacement', category: '03 / Product', title: 'Change the product in the frame', description: 'A wine bottle becomes a green gin bottle.', label: 'Original and Ripple comparison: wine bottle changed to a green gin bottle' },
   { file: 'character-swap', poster: 'character-swap', category: '04 / Character', title: 'A new character takes the lead', description: 'A torch-bearing adventurer becomes a bee-costumed character.', label: 'Original and Ripple comparison: adventurer changed to a bee-costumed character' },
+  { file: 'ballerina-transformation', poster: 'ballerina-transformation', category: '05 / Character + scene', title: 'Reimagine the whole scene', description: 'A ballerina becomes a stylized hippo in a grand interior, with a redesigned wall sign.', label: 'Original and Ripple comparison: ballerina transformed into a hippo with a redesigned interior and wall sign' },
 ];
 
 const player = document.querySelector('#example-video');
